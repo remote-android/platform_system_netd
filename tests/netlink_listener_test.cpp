@@ -153,5 +153,5 @@ TEST_F(NetlinkListenerTest, TestAllSocketUntagged) {
 TEST_F(NetlinkListenerTest, TestSkDestroyError) {
     SKIP_IF_BPF_NOT_SUPPORTED;
 
-    checkMassiveSocketDestroy(20000, true);
+    checkMassiveSocketDestroy(50000, true);
 }
