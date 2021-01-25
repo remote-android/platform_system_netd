@@ -19,6 +19,7 @@
 #include <android-base/result.h>
 #include <errno.h>
 #include <linux/if_ether.h>
+#include <linux/if_link.h>
 #include <linux/rtnetlink.h>
 
 #include <string>
@@ -135,6 +136,16 @@ inline int getTetherUpstream4TcProgFd(bool with_ethernet_header) {
     return (fd == -1) ? -errno : fd;
 }
 
+inline int getTether6TcProgFd(bool with_ethernet_header, bool downstream) {
+    return downstream ? getTetherDownstream6TcProgFd(with_ethernet_header)
+                      : getTetherUpstream6TcProgFd(with_ethernet_header);
+}
+
+inline int getTether4TcProgFd(bool with_ethernet_header, bool downstream) {
+    return downstream ? getTetherDownstream4TcProgFd(with_ethernet_header)
+                      : getTetherUpstream4TcProgFd(with_ethernet_header);
+}
+
 inline int getTetherStatsMapFd(void) {
     const int fd = bpf::mapRetrieveRW(TETHER_STATS_MAP_PATH);
     return (fd == -1) ? -errno : fd;
@@ -156,6 +167,28 @@ inline int getTetherUpstreamXdpProgFd(bool with_ethernet_header) {
     const int fd = bpf::retrieveProgram(with_ethernet_header ? TETHER_UPSTREAM_XDP_PROG_ETHER_PATH
                                                              : TETHER_UPSTREAM_XDP_PROG_RAWIP_PATH);
     return (fd == -1) ? -errno : fd;
+}
+
+inline int getTetherXdpProgFd(bool with_ethernet_header, bool downstream) {
+    return downstream ? getTetherDownstreamXdpProgFd(with_ethernet_header)
+                      : getTetherUpstreamXdpProgFd(with_ethernet_header);
+}
+
+int doSetXDP(int ifIndex, int fd, __u32 flags);
+
+inline int addXDP(int ifIndex, int fd, int mode = XDP_FLAGS_DRV_MODE) {
+    if (fd < 0) return -EBADF;
+    return doSetXDP(ifIndex, fd, mode | XDP_FLAGS_UPDATE_IF_NOEXIST);
+}
+
+inline int setXDP(int ifIndex, int fd, int mode = XDP_FLAGS_DRV_MODE) {
+    if (fd < 0) return -EBADF;
+    return doSetXDP(ifIndex, fd, mode);
+}
+
+inline int removeXDP(int ifIndex, int mode = XDP_FLAGS_DRV_MODE) {
+    // an fd of -1 means to remove
+    return doSetXDP(ifIndex, -1, mode);
 }
 
 int doTcQdiscClsact(int ifIndex, uint16_t nlMsgType, uint16_t nlMsgFlags);
