@@ -151,8 +151,8 @@ int main() {
         }
         logListener = std::move(result.value());
         auto status = gCtls->wakeupCtrl.init(logListener.get());
-        if (!isOk(result)) {
-            gLog.error("Unable to init WakeupController: %s", toString(result).c_str());
+        if (!isOk(status)) {
+            gLog.error("Unable to init WakeupController: %s", toString(status).c_str());
             // We can still continue without wakeup packet logging.
         }
     }
