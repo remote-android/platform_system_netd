@@ -779,11 +779,12 @@ TEST_F(NetdBinderTest, SocketDestroyLinkLocal) {
     sin6_1.sin6_scope_id = if_nametoindex(sTun.name().c_str());
     sin6_2.sin6_scope_id = if_nametoindex(sTun2.name().c_str());
 
-    int s1 = socket(AF_INET6, SOCK_STREAM, 0);
+    int s1 = socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK, 0);
     ASSERT_EQ(0, bind(s1, reinterpret_cast<sockaddr*>(&sin6_1), len));
     ASSERT_EQ(0, getsockname(s1, reinterpret_cast<sockaddr*>(&sin6_1), &len));
+    // getsockname technically writes to len, but sizeof(sockaddr_in6) doesn't change.
 
-    int s2 = socket(AF_INET6, SOCK_STREAM, 0);
+    int s2 = socket(AF_INET6, SOCK_STREAM | SOCK_NONBLOCK, 0);
     ASSERT_EQ(0, bind(s2, reinterpret_cast<sockaddr*>(&sin6_2), len));
     ASSERT_EQ(0, getsockname(s2, reinterpret_cast<sockaddr*>(&sin6_2), &len));
 
@@ -804,7 +805,7 @@ TEST_F(NetdBinderTest, SocketDestroyLinkLocal) {
     status = mNetd->interfaceDelAddress(sTun2.name(), kLinkLocalAddress, 64);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
-    // The sockets on sTun2 are closed, but the ones on sTun1 remain open.
+    // The client sockets on sTun2 are closed, but the ones on sTun1 remain open.
     char buf[1024];
     EXPECT_EQ(-1, read(c2, buf, sizeof(buf)));
     EXPECT_EQ(ECONNABORTED, errno);
@@ -814,6 +815,12 @@ TEST_F(NetdBinderTest, SocketDestroyLinkLocal) {
     EXPECT_EQ(3, read(c1, buf, sizeof(buf)));
     EXPECT_EQ(-1, write(a2, "foo", 3));
     EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET);
+
+    // Check the server sockets too.
+    EXPECT_EQ(-1, accept(s1, nullptr, 0));
+    EXPECT_EQ(EAGAIN, errno);
+    EXPECT_EQ(-1, accept(s2, nullptr, 0));
+    EXPECT_EQ(EINVAL, errno);
 }
 
 namespace {
