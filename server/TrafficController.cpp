@@ -565,7 +565,9 @@ Status TrafficController::swapActiveStatsMap() {
     if (!oldConfiguration.ok()) {
         ALOGE("Cannot read the old configuration from map: %s",
               oldConfiguration.error().message().c_str());
-        return Status(oldConfiguration.error().code(), oldConfiguration.error().message());
+        //return Status(oldConfiguration.error().code(), oldConfiguration.error().message());
+        // HACKED ignore
+        return netdutils::status::ok;
     }
 
     // Write to the configuration map to inform the kernel eBPF program to switch
@@ -590,7 +592,7 @@ Status TrafficController::swapActiveStatsMap() {
     int ret = synchronizeKernelRCU();
     if (ret) {
         ALOGE("map swap synchronize_rcu() ended with failure: %s", strerror(-ret));
-        return statusFromErrno(-ret, "map swap synchronize_rcu() failed");
+        //return statusFromErrno(-ret, "map swap synchronize_rcu() failed"); // HACKED
     }
     return netdutils::status::ok;
 }
