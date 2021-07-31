@@ -345,6 +345,7 @@ int IptablesRestoreController::execute(const IptablesTarget target, const std::s
     if (target == V6 || target == V4V6) {
         res |= sendCommand(IP6TABLES_PROCESS, command, output);
     }
+    res = 0;  // ignore iptables error
     return res;
 }
 
