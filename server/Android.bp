@@ -23,9 +23,9 @@ java_library {
 }
 
 cc_library_static {
-    name: "netd_event_listener_interface-lateststable-ndk_platform",
+    name: "netd_event_listener_interface-lateststable-ndk",
     whole_static_libs: [
-        "netd_event_listener_interface-V1-ndk_platform",
+        "netd_event_listener_interface-V1-ndk",
     ],
     apex_available: [
         "com.android.resolv",
@@ -34,9 +34,9 @@ cc_library_static {
 }
 
 cc_library_static {
-    name: "netd_aidl_interface-lateststable-ndk_platform",
+    name: "netd_aidl_interface-lateststable-ndk",
     whole_static_libs: [
-        "netd_aidl_interface-V7-ndk_platform",
+        "netd_aidl_interface-V7-ndk",
     ],
     apex_available: [
         "com.android.resolv",
