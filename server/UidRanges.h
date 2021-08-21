@@ -50,9 +50,7 @@ public:
     bool empty() const { return mRanges.empty(); }
 
   private:
-    // a utility to check if two UidRangeParcels have uid overlap.
-    bool isOverlapped(const UidRangeParcel& r1, const UidRangeParcel& r2) const;
-
+    // Keep it sorted. The overlaps() implements binary search, which requires a sorted data.
     std::vector<UidRangeParcel> mRanges;
 };
 
