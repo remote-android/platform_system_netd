@@ -47,22 +47,22 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
     const struct ipv6hdr* const ip6 = is_ethernet ? (void*)(eth + 1) : data;
 
     // Require ethernet dst mac address to be our unicast address.
-    if (is_ethernet && (skb->pkt_type != PACKET_HOST)) return TC_ACT_OK;
+    if (is_ethernet && (skb->pkt_type != PACKET_HOST)) return TC_ACT_PIPE;
 
     // Must be meta-ethernet IPv6 frame
-    if (skb->protocol != htons(ETH_P_IPV6)) return TC_ACT_OK;
+    if (skb->protocol != htons(ETH_P_IPV6)) return TC_ACT_PIPE;
 
     // Must have (ethernet and) ipv6 header
-    if (data + l2_header_size + sizeof(*ip6) > data_end) return TC_ACT_OK;
+    if (data + l2_header_size + sizeof(*ip6) > data_end) return TC_ACT_PIPE;
 
     // Ethertype - if present - must be IPv6
-    if (is_ethernet && (eth->h_proto != htons(ETH_P_IPV6))) return TC_ACT_OK;
+    if (is_ethernet && (eth->h_proto != htons(ETH_P_IPV6))) return TC_ACT_PIPE;
 
     // IP version must be 6
-    if (ip6->version != 6) return TC_ACT_OK;
+    if (ip6->version != 6) return TC_ACT_PIPE;
 
     // Maximum IPv6 payload length that can be translated to IPv4
-    if (ntohs(ip6->payload_len) > 0xFFFF - sizeof(struct iphdr)) return TC_ACT_OK;
+    if (ntohs(ip6->payload_len) > 0xFFFF - sizeof(struct iphdr)) return TC_ACT_PIPE;
 
     switch (ip6->nexthdr) {
         case IPPROTO_TCP:  // For TCP & UDP the checksum neutrality of the chosen IPv6
@@ -72,7 +72,7 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
             break;
 
         default:  // do not know how to handle anything else
-            return TC_ACT_OK;
+            return TC_ACT_PIPE;
     }
 
     ClatIngress6Key k = {
@@ -88,7 +88,7 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
 
     ClatIngress6Value* v = bpf_clat_ingress6_map_lookup_elem(&k);
 
-    if (!v) return TC_ACT_OK;
+    if (!v) return TC_ACT_PIPE;
 
     struct ethhdr eth2;  // used iff is_ethernet
     if (is_ethernet) {
@@ -132,7 +132,7 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
 
     // Packet mutations begin - point of no return, but if this first modification fails
     // the packet is probably still pristine, so let clatd handle it.
-    if (bpf_skb_change_proto(skb, htons(ETH_P_IP), 0)) return TC_ACT_OK;
+    if (bpf_skb_change_proto(skb, htons(ETH_P_IP), 0)) return TC_ACT_PIPE;
 
     // This takes care of updating the skb->csum field for a CHECKSUM_COMPLETE packet.
     //
@@ -176,7 +176,7 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
     if (v->oif) return bpf_redirect(v->oif, BPF_F_INGRESS);
 
     // Just let it through, tcpdump will not see IPv4 packet.
-    return TC_ACT_OK;
+    return TC_ACT_PIPE;
 }
 
 DEFINE_BPF_PROG("schedcls/ingress6/clat_ether", AID_ROOT, AID_ROOT, sched_cls_ingress6_clat_ether)
@@ -193,7 +193,7 @@ DEFINE_BPF_MAP(clat_egress4_map, HASH, ClatEgress4Key, ClatEgress4Value, 16)
 
 DEFINE_BPF_PROG("schedcls/egress4/clat_ether", AID_ROOT, AID_ROOT, sched_cls_egress4_clat_ether)
 (struct __sk_buff* skb) {
-    return TC_ACT_OK;
+    return TC_ACT_PIPE;
 }
 
 DEFINE_BPF_PROG("schedcls/egress4/clat_rawip", AID_ROOT, AID_ROOT, sched_cls_egress4_clat_rawip)
@@ -203,16 +203,16 @@ DEFINE_BPF_PROG("schedcls/egress4/clat_rawip", AID_ROOT, AID_ROOT, sched_cls_egr
     const struct iphdr* const ip4 = data;
 
     // Must be meta-ethernet IPv4 frame
-    if (skb->protocol != htons(ETH_P_IP)) return TC_ACT_OK;
+    if (skb->protocol != htons(ETH_P_IP)) return TC_ACT_PIPE;
 
     // Must have ipv4 header
-    if (data + sizeof(*ip4) > data_end) return TC_ACT_OK;
+    if (data + sizeof(*ip4) > data_end) return TC_ACT_PIPE;
 
     // IP version must be 4
-    if (ip4->version != 4) return TC_ACT_OK;
+    if (ip4->version != 4) return TC_ACT_PIPE;
 
     // We cannot handle IP options, just standard 20 byte == 5 dword minimal IPv4 header
-    if (ip4->ihl != 5) return TC_ACT_OK;
+    if (ip4->ihl != 5) return TC_ACT_PIPE;
 
     // Calculate the IPv4 one's complement checksum of the IPv4 header.
     __wsum sum4 = 0;
@@ -223,13 +223,13 @@ DEFINE_BPF_PROG("schedcls/egress4/clat_rawip", AID_ROOT, AID_ROOT, sched_cls_egr
     sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse u32 into range 1 .. 0x1FFFE
     sum4 = (sum4 & 0xFFFF) + (sum4 >> 16);  // collapse any potential carry into u16
     // for a correct checksum we should get *a* zero, but sum4 must be positive, ie 0xFFFF
-    if (sum4 != 0xFFFF) return TC_ACT_OK;
+    if (sum4 != 0xFFFF) return TC_ACT_PIPE;
 
     // Minimum IPv4 total length is the size of the header
-    if (ntohs(ip4->tot_len) < sizeof(*ip4)) return TC_ACT_OK;
+    if (ntohs(ip4->tot_len) < sizeof(*ip4)) return TC_ACT_PIPE;
 
     // We are incapable of dealing with IPv4 fragments
-    if (ip4->frag_off & ~htons(IP_DF)) return TC_ACT_OK;
+    if (ip4->frag_off & ~htons(IP_DF)) return TC_ACT_PIPE;
 
     switch (ip4->protocol) {
         case IPPROTO_TCP:  // For TCP & UDP the checksum neutrality of the chosen IPv6
@@ -238,17 +238,17 @@ DEFINE_BPF_PROG("schedcls/egress4/clat_rawip", AID_ROOT, AID_ROOT, sched_cls_egr
             break;         // since there is never a checksum to update.
 
         case IPPROTO_UDP:  // See above comment, but must also have UDP header...
-            if (data + sizeof(*ip4) + sizeof(struct udphdr) > data_end) return TC_ACT_OK;
+            if (data + sizeof(*ip4) + sizeof(struct udphdr) > data_end) return TC_ACT_PIPE;
             const struct udphdr* uh = (const struct udphdr*)(ip4 + 1);
             // If IPv4/UDP checksum is 0 then fallback to clatd so it can calculate the
             // checksum.  Otherwise the network or more likely the NAT64 gateway might
             // drop the packet because in most cases IPv6/UDP packets with a zero checksum
             // are invalid. See RFC 6935.  TODO: calculate checksum via bpf_csum_diff()
-            if (!uh->check) return TC_ACT_OK;
+            if (!uh->check) return TC_ACT_PIPE;
             break;
 
         default:  // do not know how to handle anything else
-            return TC_ACT_OK;
+            return TC_ACT_PIPE;
     }
 
     ClatEgress4Key k = {
@@ -258,13 +258,13 @@ DEFINE_BPF_PROG("schedcls/egress4/clat_rawip", AID_ROOT, AID_ROOT, sched_cls_egr
 
     ClatEgress4Value* v = bpf_clat_egress4_map_lookup_elem(&k);
 
-    if (!v) return TC_ACT_OK;
+    if (!v) return TC_ACT_PIPE;
 
     // Translating without redirecting doesn't make sense.
-    if (!v->oif) return TC_ACT_OK;
+    if (!v->oif) return TC_ACT_PIPE;
 
     // This implementation is currently limited to rawip.
-    if (v->oifIsEthernet) return TC_ACT_OK;
+    if (v->oifIsEthernet) return TC_ACT_PIPE;
 
     struct ipv6hdr ip6 = {
             .version = 6,                                    // __u8:4
@@ -290,7 +290,7 @@ DEFINE_BPF_PROG("schedcls/egress4/clat_rawip", AID_ROOT, AID_ROOT, sched_cls_egr
 
     // Packet mutations begin - point of no return, but if this first modification fails
     // the packet is probably still pristine, so let clatd handle it.
-    if (bpf_skb_change_proto(skb, htons(ETH_P_IPV6), 0)) return TC_ACT_OK;
+    if (bpf_skb_change_proto(skb, htons(ETH_P_IPV6), 0)) return TC_ACT_PIPE;
 
     // This takes care of updating the skb->csum field for a CHECKSUM_COMPLETE packet.
     //
