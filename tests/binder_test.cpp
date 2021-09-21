@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
+#include <numeric>
 #include <regex>
 #include <set>
 #include <string>
@@ -1764,39 +1765,86 @@ TEST_F(NetdBinderTest, BandwidthSetGlobalAlert) {
 
 namespace {
 
-std::string ipRouteString(const std::string& ifName, const std::string& dst,
-                          const std::string& nextHop, const std::string& mtu) {
-    std::string dstString = (dst == "0.0.0.0/0" || dst == "::/0") ? "default" : dst;
+// Output looks like this:
+//
+// IPv4:
+//
+// throw        dst                         proto static    scope link
+// unreachable  dst                         proto static    scope link
+//              dst via nextHop dev ifName  proto static
+//              dst             dev ifName  proto static    scope link
+//
+// IPv6:
+//
+// throw        dst             dev lo      proto static    metric 1024
+// unreachable  dst             dev lo      proto static    metric 1024
+//              dst via nextHop dev ifName  proto static    metric 1024
+//              dst             dev ifName  proto static    metric 1024
+std::string ipRoutePrefix(const std::string& ifName, const std::string& dst,
+                          const std::string& nextHop) {
+    std::string prefixString;
 
-    if (!nextHop.empty()) {
-        dstString += " via " + nextHop;
+    bool isThrow = nextHop == "throw";
+    bool isUnreachable = nextHop == "unreachable";
+    bool isDefault = (dst == "0.0.0.0/0" || dst == "::/0");
+    bool isIPv6 = dst.find(':') != std::string::npos;
+    bool isThrowOrUnreachable = isThrow || isUnreachable;
+
+    if (isThrowOrUnreachable) {
+        prefixString += nextHop + " ";
     }
 
-    dstString += " dev " + ifName;
+    prefixString += isDefault ? "default" : dst;
+
+    if (!nextHop.empty() && !isThrowOrUnreachable) {
+        prefixString += " via " + nextHop;
+    }
+
+    if (isThrowOrUnreachable) {
+        if (isIPv6) {
+            prefixString += " dev lo";
+        }
+    } else {
+        prefixString += " dev " + ifName;
+    }
+
+    prefixString += " proto static";
+
+    // IPv6 routes report the metric, IPv4 routes report the scope.
+    if (isIPv6) {
+        prefixString += " metric 1024";
+    } else {
+        if (nextHop.empty() || isThrowOrUnreachable) {
+            prefixString += " scope link";
+        }
+    }
+
+    return prefixString;
+}
+
+std::vector<std::string> ipRouteSubstrings(const std::string& ifName, const std::string& dst,
+                                           const std::string& nextHop, const std::string& mtu) {
+    std::vector<std::string> routeSubstrings;
+
+    routeSubstrings.push_back(ipRoutePrefix(ifName, dst, nextHop));
 
     if (!mtu.empty()) {
-        dstString += " proto static";
-        // IPv6 routes report the metric, IPv4 routes report the scope.
-        // TODO: move away from specifying the entire string and use a regexp instead.
-        if (dst.find(':') != std::string::npos) {
-            dstString += " metric 1024";
-        } else {
-            if (nextHop.empty()) {
-                dstString += " scope link";
-            }
-        }
-        dstString += " mtu " + mtu;
+        // Add separate substring to match mtu value.
+        // This is needed because on some devices "error -11"/"error -113" appears between ip prefix
+        // and mtu for throw/unreachable routes.
+        routeSubstrings.push_back("mtu " + mtu);
     }
 
-    return dstString;
+    return routeSubstrings;
 }
 
 void expectNetworkRouteExistsWithMtu(const char* ipVersion, const std::string& ifName,
                                      const std::string& dst, const std::string& nextHop,
                                      const std::string& mtu, const char* table) {
-    std::string routeString = ipRouteString(ifName, dst, nextHop, mtu);
-    EXPECT_TRUE(ipRouteExists(ipVersion, table, routeString))
-            << "Couldn't find route to " << dst << ": '" << routeString << "' in table " << table;
+    std::vector<std::string> routeSubstrings = ipRouteSubstrings(ifName, dst, nextHop, mtu);
+    EXPECT_TRUE(ipRouteExists(ipVersion, table, routeSubstrings))
+            << "Couldn't find route to " << dst << ": [" << Join(routeSubstrings, ", ")
+            << "] in table " << table;
 }
 
 void expectNetworkRouteExists(const char* ipVersion, const std::string& ifName,
@@ -1808,9 +1856,9 @@ void expectNetworkRouteExists(const char* ipVersion, const std::string& ifName,
 void expectNetworkRouteDoesNotExist(const char* ipVersion, const std::string& ifName,
                                     const std::string& dst, const std::string& nextHop,
                                     const char* table) {
-    std::string routeString = ipRouteString(ifName, dst, nextHop, "");
-    EXPECT_FALSE(ipRouteExists(ipVersion, table, routeString))
-            << "Found unexpected route " << routeString << " in table " << table;
+    std::vector<std::string> routeSubstrings = ipRouteSubstrings(ifName, dst, nextHop, "");
+    EXPECT_FALSE(ipRouteExists(ipVersion, table, routeSubstrings))
+            << "Found unexpected route [" << Join(routeSubstrings, ", ") << "] in table " << table;
 }
 
 bool ipRuleExists(const char* ipVersion, const std::string& ipRule) {
@@ -1922,6 +1970,14 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
             {IP_RULE_V6, "::/0", "2001:db8::", true},
             {IP_RULE_V6, "2001:db8:cafe::/64", "2001:db8::", true},
             {IP_RULE_V4, "fe80::/64", "0.0.0.0", false},
+            {IP_RULE_V4, "10.251.10.2/31", "throw", true},
+            {IP_RULE_V4, "10.251.10.2/31", "unreachable", true},
+            {IP_RULE_V4, "0.0.0.0/0", "throw", true},
+            {IP_RULE_V4, "0.0.0.0/0", "unreachable", true},
+            {IP_RULE_V6, "::/0", "throw", true},
+            {IP_RULE_V6, "::/0", "unreachable", true},
+            {IP_RULE_V6, "2001:db8:cafe::/64", "throw", true},
+            {IP_RULE_V6, "2001:db8:cafe::/64", "unreachable", true},
     };
 
     static const struct {
