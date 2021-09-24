@@ -62,10 +62,6 @@ const char* const ROUTE_TABLE_NAME_LEGACY_SYSTEM  = "legacy_system";
 const char* const ROUTE_TABLE_NAME_LOCAL = "local";
 const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
-// None of our regular routes specify priority, which causes them to have the default priority.
-// For default throw routes, we use a fixed priority of 100000.
-uint32_t PRIO_THROW = 100000;
-
 const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT";
 
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
@@ -346,7 +342,7 @@ int padInterfaceName(const char* input, char* name, size_t* length, uint16_t* pa
 // Adds or deletes an IPv4 or IPv6 route.
 // Returns 0 on success or negative errno on failure.
 int modifyIpRoute(uint16_t action, uint16_t flags, uint32_t table, const char* interface,
-                  const char* destination, const char* nexthop, uint32_t mtu) {
+                  const char* destination, const char* nexthop, uint32_t mtu, uint32_t priority) {
     // At least the destination must be non-null.
     if (!destination) {
         ALOGE("null destination");
@@ -401,8 +397,6 @@ int modifyIpRoute(uint16_t action, uint16_t flags, uint32_t table, const char* i
         }
     }
 
-    bool isDefaultThrowRoute = (type == RTN_THROW && prefixLength == 0);
-
     // Assemble a rtmsg and put it in an array of iovec structures.
     rtmsg route = {
             .rtm_family = family,
@@ -416,21 +410,21 @@ int modifyIpRoute(uint16_t action, uint16_t flags, uint32_t table, const char* i
     rtattr rtaGateway = { U16_RTA_LENGTH(rawLength), RTA_GATEWAY };
 
     iovec iov[] = {
-        { nullptr,         0 },
-        { &route,          sizeof(route) },
-        { &RTATTR_TABLE,   sizeof(RTATTR_TABLE) },
-        { &table,          sizeof(table) },
-        { &rtaDst,         sizeof(rtaDst) },
-        { rawAddress,      static_cast<size_t>(rawLength) },
-        { &RTATTR_OIF,     interface != OIF_NONE ? sizeof(RTATTR_OIF) : 0 },
-        { &ifindex,        interface != OIF_NONE ? sizeof(ifindex) : 0 },
-        { &rtaGateway,     nexthop ? sizeof(rtaGateway) : 0 },
-        { rawNexthop,      nexthop ? static_cast<size_t>(rawLength) : 0 },
-        { &RTATTR_METRICS, mtu != 0 ? sizeof(RTATTR_METRICS) : 0 },
-        { &RTATTRX_MTU,    mtu != 0 ? sizeof(RTATTRX_MTU) : 0 },
-        { &mtu,            mtu != 0 ? sizeof(mtu) : 0 },
-        { &RTATTR_PRIO,    isDefaultThrowRoute ? sizeof(RTATTR_PRIO) : 0 },
-        { &PRIO_THROW,     isDefaultThrowRoute ? sizeof(PRIO_THROW) : 0 },
+            {nullptr, 0},
+            {&route, sizeof(route)},
+            {&RTATTR_TABLE, sizeof(RTATTR_TABLE)},
+            {&table, sizeof(table)},
+            {&rtaDst, sizeof(rtaDst)},
+            {rawAddress, static_cast<size_t>(rawLength)},
+            {&RTATTR_OIF, interface != OIF_NONE ? sizeof(RTATTR_OIF) : 0},
+            {&ifindex, interface != OIF_NONE ? sizeof(ifindex) : 0},
+            {&rtaGateway, nexthop ? sizeof(rtaGateway) : 0},
+            {rawNexthop, nexthop ? static_cast<size_t>(rawLength) : 0},
+            {&RTATTR_METRICS, mtu != 0 ? sizeof(RTATTR_METRICS) : 0},
+            {&RTATTRX_MTU, mtu != 0 ? sizeof(RTATTRX_MTU) : 0},
+            {&mtu, mtu != 0 ? sizeof(mtu) : 0},
+            {&RTATTR_PRIO, priority != 0 ? sizeof(RTATTR_PRIO) : 0},
+            {&priority, priority != 0 ? sizeof(priority) : 0},
     };
 
     // Allow creating multiple link-local routes in the same table, so we can make IPv6
@@ -709,12 +703,12 @@ int RouteController::configureDummyNetwork() {
     }
 
     if ((ret = modifyIpRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, table, interface,
-                             "0.0.0.0/0", nullptr, 0 /* mtu */))) {
+                             "0.0.0.0/0", nullptr, 0 /* mtu */, 0 /* priority */))) {
         return ret;
     }
 
     if ((ret = modifyIpRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, table, interface, "::/0",
-                             nullptr, 0 /* mtu */))) {
+                             nullptr, 0 /* mtu */, 0 /* priority */))) {
         return ret;
     }
 
@@ -1026,7 +1020,7 @@ int RouteController::modifyTetheredNetwork(uint16_t action, const char* inputInt
 // Returns 0 on success or negative errno on failure.
 int RouteController::modifyRoute(uint16_t action, uint16_t flags, const char* interface,
                                  const char* destination, const char* nexthop, TableType tableType,
-                                 int mtu) {
+                                 int mtu, int priority) {
     uint32_t table;
     switch (tableType) {
         case RouteController::INTERFACE: {
@@ -1050,7 +1044,7 @@ int RouteController::modifyRoute(uint16_t action, uint16_t flags, const char* in
         }
     }
 
-    int ret = modifyIpRoute(action, flags, table, interface, destination, nexthop, mtu);
+    int ret = modifyIpRoute(action, flags, table, interface, destination, nexthop, mtu, priority);
     // Trying to add a route that already exists shouldn't cause an error.
     if (ret && !(action == RTM_NEWROUTE && ret == -EEXIST)) {
         return ret;
@@ -1284,21 +1278,21 @@ int RouteController::removeInterfaceFromDefaultNetwork(const char* interface,
 }
 
 int RouteController::addRoute(const char* interface, const char* destination, const char* nexthop,
-                              TableType tableType, int mtu) {
+                              TableType tableType, int mtu, int priority) {
     return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination, nexthop,
-                       tableType, mtu);
+                       tableType, mtu, priority);
 }
 
 int RouteController::removeRoute(const char* interface, const char* destination,
-                                 const char* nexthop, TableType tableType) {
+                                 const char* nexthop, TableType tableType, int priority) {
     return modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
-                       tableType, 0);
+                       tableType, 0 /* mtu */, priority);
 }
 
 int RouteController::updateRoute(const char* interface, const char* destination,
                                  const char* nexthop, TableType tableType, int mtu) {
     return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination, nexthop,
-                       tableType, mtu);
+                       tableType, mtu, 0 /* priority */);
 }
 
 int RouteController::enableTethering(const char* inputInterface, const char* outputInterface) {

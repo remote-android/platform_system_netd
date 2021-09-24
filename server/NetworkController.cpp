@@ -897,11 +897,13 @@ int NetworkController::modifyRoute(unsigned netId, const char* interface, const 
 
     switch (op) {
         case ROUTE_ADD:
-            return RouteController::addRoute(interface, destination, nexthop, tableType, mtu);
+            return RouteController::addRoute(interface, destination, nexthop, tableType, mtu,
+                                             0 /* priority */);
         case ROUTE_UPDATE:
             return RouteController::updateRoute(interface, destination, nexthop, tableType, mtu);
         case ROUTE_REMOVE:
-            return RouteController::removeRoute(interface, destination, nexthop, tableType);
+            return RouteController::removeRoute(interface, destination, nexthop, tableType,
+                                                0 /* priority */);
     }
     return -EINVAL;
 }
