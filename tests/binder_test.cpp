@@ -1795,7 +1795,7 @@ void expectNetworkRouteExistsWithMtu(const char* ipVersion, const std::string& i
                                      const std::string& dst, const std::string& nextHop,
                                      const std::string& mtu, const char* table) {
     std::string routeString = ipRouteString(ifName, dst, nextHop, mtu);
-    EXPECT_TRUE(ipRouteExists(ipVersion, table, ipRouteString(ifName, dst, nextHop, mtu)))
+    EXPECT_TRUE(ipRouteExists(ipVersion, table, routeString))
             << "Couldn't find route to " << dst << ": '" << routeString << "' in table " << table;
 }
 
@@ -1809,7 +1809,7 @@ void expectNetworkRouteDoesNotExist(const char* ipVersion, const std::string& if
                                     const std::string& dst, const std::string& nextHop,
                                     const char* table) {
     std::string routeString = ipRouteString(ifName, dst, nextHop, "");
-    EXPECT_FALSE(ipRouteExists(ipVersion, table, ipRouteString(ifName, dst, nextHop, "")))
+    EXPECT_FALSE(ipRouteExists(ipVersion, table, routeString))
             << "Found unexpected route " << routeString << " in table " << table;
 }
 
