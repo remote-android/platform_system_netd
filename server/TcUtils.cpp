@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "OffloadUtils.h"
+#include "TcUtils.h"
 
 #include <arpa/inet.h>
 #include <linux/if.h>
@@ -27,7 +27,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define LOG_TAG "OffloadUtils"
+#define LOG_TAG "TcUtils"
 #include <log/log.h>
 
 #include "NetlinkCommands.h"
