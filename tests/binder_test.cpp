@@ -2420,11 +2420,27 @@ void expectFirewallAllowlistMode() {
 }
 
 void expectFirewallDenylistMode() {
-    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        EXPECT_EQ(2, iptablesRuleLineLength(binary, FIREWALL_INPUT));
-        EXPECT_EQ(2, iptablesRuleLineLength(binary, FIREWALL_OUTPUT));
-        EXPECT_EQ(2, iptablesRuleLineLength(binary, FIREWALL_FORWARD));
+    EXPECT_EQ(2, iptablesRuleLineLength(IPTABLES_PATH, FIREWALL_INPUT));
+    EXPECT_EQ(2, iptablesRuleLineLength(IPTABLES_PATH, FIREWALL_OUTPUT));
+    EXPECT_EQ(2, iptablesRuleLineLength(IPTABLES_PATH, FIREWALL_FORWARD));
+
+    // for IPv6 there is an extra OUTPUT rule to DROP ::1 sourced packets to non-loopback devices
+    EXPECT_EQ(2, iptablesRuleLineLength(IP6TABLES_PATH, FIREWALL_INPUT));
+
+    // TODO: remove, see  b/203581568. This fix is specifically meant for android12-tests-dev and
+    // should not be needed in later releases.
+    // Fixes broken VTS tests due to a late merge into sc-dev. This test should
+    // pass on devices with / without aosp/1858895. It accepts 2 or 3 output
+    // rule lines for IPv6, and checks for DROP ::1 in case there are 3.
+    unsigned lineLength = iptablesRuleLineLength(IP6TABLES_PATH, FIREWALL_OUTPUT);
+    if (lineLength == 3) {
+        std::string rule = "DROP       all      ::1                  ::/0                \n";
+        std::vector<std::string> iptablesRule = listIptablesRule(IP6TABLES_PATH, FIREWALL_OUTPUT);
+        EXPECT_EQ(rule, iptablesRule.back());
+    } else {
+        EXPECT_EQ(2, iptablesRuleLineLength(IP6TABLES_PATH, FIREWALL_OUTPUT));
     }
+    EXPECT_EQ(2, iptablesRuleLineLength(IP6TABLES_PATH, FIREWALL_FORWARD));
 }
 
 bool iptablesFirewallInterfaceFirstRuleExists(const char* binary, const char* chainName,
