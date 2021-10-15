@@ -39,6 +39,9 @@ constexpr bool ETHER = true;
 constexpr bool EGRESS = false;
 constexpr bool INGRESS = true;
 
+// The priority of clat hook - must be after tethering.
+constexpr uint16_t PRIO_CLAT = 4;
+
 // this returns an ARPHRD_* constant or a -errno
 int hardwareAddressType(const std::string& interface);
 
@@ -98,16 +101,16 @@ inline int tcFilterAddDevEgressClatIpv4(int ifIndex, int bpfFd, bool ethernet) {
 }
 
 // tc filter del dev .. in/egress prio .. protocol ..
-int tcFilterDelDev(int ifIndex, bool ingress, uint16_t proto);
+int tcFilterDelDev(int ifIndex, bool ingress, uint16_t prio, uint16_t proto);
 
 // tc filter del dev .. ingress prio 4 protocol ipv6
 inline int tcFilterDelDevIngressClatIpv6(int ifIndex) {
-    return tcFilterDelDev(ifIndex, INGRESS, ETH_P_IPV6);
+    return tcFilterDelDev(ifIndex, INGRESS, PRIO_CLAT, ETH_P_IPV6);
 }
 
 // tc filter del dev .. egress prio 4 protocol ip
 inline int tcFilterDelDevEgressClatIpv4(int ifIndex) {
-    return tcFilterDelDev(ifIndex, EGRESS, ETH_P_IP);
+    return tcFilterDelDev(ifIndex, EGRESS, PRIO_CLAT, ETH_P_IP);
 }
 
 }  // namespace net
