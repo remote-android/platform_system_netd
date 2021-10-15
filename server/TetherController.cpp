@@ -51,8 +51,8 @@
 #include "InterfaceController.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
-#include "OffloadUtils.h"
 #include "Permission.h"
+#include "TcUtils.h"
 #include "TetherController.h"
 
 #include "android/net/TetherOffloadRuleParcel.h"
