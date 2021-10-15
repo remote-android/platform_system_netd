@@ -23,6 +23,7 @@
 #include <linux/in6.h>
 #include <linux/ip.h>
 #include <linux/ipv6.h>
+#include <linux/pkt_cls.h>
 #include <linux/tcp.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -316,6 +317,14 @@ DEFINE_BPF_PROG("skfilter/ingress/xtbpf", AID_ROOT, AID_NET_ADMIN, xt_bpf_ingres
     uint32_t key = skb->ifindex;
     update_iface_stats_map(skb, BPF_INGRESS, &key);
     return BPF_MATCH;
+}
+
+DEFINE_BPF_PROG("schedact/ingress/account", AID_ROOT, AID_NET_ADMIN, tc_bpf_ingress_account_prog)
+(struct __sk_buff* skb) {
+    // Account for ingress traffic before tc drops it.
+    uint32_t key = skb->ifindex;
+    update_iface_stats_map(skb, BPF_INGRESS, &key);
+    return TC_ACT_UNSPEC;
 }
 
 DEFINE_BPF_PROG("skfilter/allowlist/xtbpf", AID_ROOT, AID_NET_ADMIN, xt_bpf_allowlist_prog)
