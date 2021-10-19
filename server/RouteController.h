@@ -142,9 +142,10 @@ public:
     // |nexthop| can be NULL (to indicate a directly-connected route), "unreachable" (to indicate a
     // route that's blocked), "throw" (to indicate the lack of a match), or a regular IP address.
     [[nodiscard]] static int addRoute(const char* interface, const char* destination,
-                                      const char* nexthop, TableType tableType, int mtu);
+                                      const char* nexthop, TableType tableType, int mtu,
+                                      int priority);
     [[nodiscard]] static int removeRoute(const char* interface, const char* destination,
-                                         const char* nexthop, TableType tableType);
+                                         const char* nexthop, TableType tableType, int priority);
     [[nodiscard]] static int updateRoute(const char* interface, const char* destination,
                                          const char* nexthop, TableType tableType, int mtu);
 
@@ -195,7 +196,7 @@ private:
     static int modifyUnreachableNetwork(unsigned netId, const UidRangeMap& uidRangeMap, bool add);
     static int modifyRoute(uint16_t action, uint16_t flags, const char* interface,
                            const char* destination, const char* nexthop, TableType tableType,
-                           int mtu);
+                           int mtu, int priority);
     static int modifyTetheredNetwork(uint16_t action, const char* inputInterface,
                                      const char* outputInterface);
     static int modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
@@ -211,7 +212,7 @@ private:
 // functions public.
 [[nodiscard]] int modifyIpRoute(uint16_t action, uint16_t flags, uint32_t table,
                                 const char* interface, const char* destination, const char* nexthop,
-                                uint32_t mtu);
+                                uint32_t mtu, uint32_t priority);
 uint32_t getRulePriority(const nlmsghdr *nlh);
 [[nodiscard]] int modifyIncomingPacketMark(unsigned netId, const char* interface,
                                            Permission permission, bool add);
