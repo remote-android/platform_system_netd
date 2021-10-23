@@ -25,7 +25,7 @@
 #include "android-base/thread_annotations.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
-#include "netdbpf/bpf_shared.h"
+#include "bpf_shared.h"
 #include "netdutils/DumpWriter.h"
 #include "netdutils/StatusOr.h"
 #include "utils/String16.h"

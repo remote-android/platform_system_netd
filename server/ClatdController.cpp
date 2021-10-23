@@ -39,7 +39,7 @@
 #include "android-base/stringprintf.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
-#include "netdbpf/bpf_shared.h"
+#include "bpf_shared.h"
 #include "netdutils/DumpWriter.h"
 
 extern "C" {
