@@ -768,6 +768,22 @@ void NetworkController::dump(DumpWriter& dw) {
     }
     dw.decIndent();
 
+    dw.blankline();
+    dw.println("Permission of users:");
+    dw.incIndent();
+    std::vector<uid_t> systemUids;
+    std::vector<uid_t> networkUids;
+    for (const auto& [uid, permission] : mUsers) {
+        if ((permission & PERMISSION_SYSTEM) == PERMISSION_SYSTEM) {
+            systemUids.push_back(uid);
+        } else if ((permission & PERMISSION_NETWORK) == PERMISSION_NETWORK) {
+            networkUids.push_back(uid);
+        }
+    }
+    dw.println("NETWORK: %s", android::base::Join(networkUids, ", ").c_str());
+    dw.println("SYSTEM: %s", android::base::Join(systemUids, ", ").c_str());
+    dw.decIndent();
+
     dw.decIndent();
 
     dw.decIndent();
