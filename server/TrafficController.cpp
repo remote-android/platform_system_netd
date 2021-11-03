@@ -551,13 +551,12 @@ Status TrafficController::addRule(uint32_t uid, UidOwnerMatchType match, uint32_
 }
 
 Status TrafficController::updateUidOwnerMap(const std::vector<uint32_t>& appUids,
-                                            UidOwnerMatchType matchType,
-                                            BandwidthController::IptOp op) {
+                                            UidOwnerMatchType matchType, IptOp op) {
     std::lock_guard guard(mMutex);
     for (uint32_t uid : appUids) {
-        if (op == BandwidthController::IptOpDelete) {
+        if (op == IptOpDelete) {
             RETURN_IF_NOT_OK(removeRule(uid, matchType));
-        } else if (op == BandwidthController::IptOpInsert) {
+        } else if (op == IptOpInsert) {
             RETURN_IF_NOT_OK(addRule(uid, matchType));
         } else {
             // Cannot happen.

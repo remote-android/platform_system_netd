@@ -74,8 +74,6 @@ using android::base::StartsWith;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
 using android::net::FirewallController;
-using android::net::gCtls;
-using android::netdutils::Status;
 using android::netdutils::StatusOr;
 using android::netdutils::UniqueFile;
 
@@ -321,31 +319,6 @@ int BandwidthController::enableDataSaver(bool enable) {
     int ret = iptablesRestoreFunction(V4, makeDataSaverCommand(V4, enable), nullptr);
     ret |= iptablesRestoreFunction(V6, makeDataSaverCommand(V6, enable), nullptr);
     return ret;
-}
-
-int BandwidthController::addNaughtyApps(const std::vector<uint32_t>& appUids) {
-    return manipulateSpecialApps(appUids, PENALTY_BOX_MATCH, IptOpInsert);
-}
-
-int BandwidthController::removeNaughtyApps(const std::vector<uint32_t>& appUids) {
-    return manipulateSpecialApps(appUids, PENALTY_BOX_MATCH, IptOpDelete);
-}
-
-int BandwidthController::addNiceApps(const std::vector<uint32_t>& appUids) {
-    return manipulateSpecialApps(appUids, HAPPY_BOX_MATCH, IptOpInsert);
-}
-
-int BandwidthController::removeNiceApps(const std::vector<uint32_t>& appUids) {
-    return manipulateSpecialApps(appUids, HAPPY_BOX_MATCH, IptOpDelete);
-}
-
-int BandwidthController::manipulateSpecialApps(const std::vector<uint32_t>& appUids,
-                                               UidOwnerMatchType matchType, IptOp op) {
-    Status status = gCtls->trafficCtrl.updateUidOwnerMap(appUids, matchType, op);
-    if (!isOk(status)) {
-        ALOGE("unable to update the Bandwidth Uid Map: %s", toString(status).c_str());
-    }
-    return status.code();
 }
 
 int BandwidthController::setInterfaceSharedQuota(const std::string& iface, int64_t maxBytes) {
