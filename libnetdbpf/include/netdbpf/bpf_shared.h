@@ -89,14 +89,15 @@ typedef struct {
 // we don't have a total limit for data entries but only have limitation of tags each uid can have.
 // (default is 1024 in kernel);
 
-const int COOKIE_UID_MAP_SIZE = 10000;
-const int UID_COUNTERSET_MAP_SIZE = 2000;
-const int APP_STATS_MAP_SIZE = 10000;
-const int STATS_MAP_SIZE = 5000;
-const int IFACE_INDEX_NAME_MAP_SIZE = 1000;
-const int IFACE_STATS_MAP_SIZE = 1000;
-const int CONFIGURATION_MAP_SIZE = 2;
-const int UID_OWNER_MAP_SIZE = 2000;
+// 'static' - otherwise these constants end up in .rodata in the resulting .o post compilation
+static const int COOKIE_UID_MAP_SIZE = 10000;
+static const int UID_COUNTERSET_MAP_SIZE = 2000;
+static const int APP_STATS_MAP_SIZE = 10000;
+static const int STATS_MAP_SIZE = 5000;
+static const int IFACE_INDEX_NAME_MAP_SIZE = 1000;
+static const int IFACE_STATS_MAP_SIZE = 1000;
+static const int CONFIGURATION_MAP_SIZE = 2;
+static const int UID_OWNER_MAP_SIZE = 2000;
 
 #define BPF_PATH "/sys/fs/bpf/"
 
@@ -148,7 +149,7 @@ enum StatsMapType {
 // TODO: change the configuration object from an 8-bit bitmask to an object with clearer
 // semantics, like a struct.
 typedef uint8_t BpfConfig;
-const BpfConfig DEFAULT_CONFIG = 0;
+static const BpfConfig DEFAULT_CONFIG = 0;
 
 typedef struct {
     // Allowed interface index. Only applicable if IIF_MATCH is set in the rule bitmask above.
