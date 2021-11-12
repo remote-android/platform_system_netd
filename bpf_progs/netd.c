@@ -270,7 +270,12 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
 
     uint32_t mapSettingKey = CURRENT_STATS_MAP_CONFIGURATION_KEY;
     uint8_t* selectedMap = bpf_configuration_map_lookup_elem(&mapSettingKey);
+
+    // Use asm("%0 &= 1" : "+r"(match)) before return match,
+    // to help kernel's bpf verifier, so that it can be 100% certain
+    // that the returned value is always BPF_NOMATCH(0) or BPF_MATCH(1).
     if (!selectedMap) {
+        asm("%0 &= 1" : "+r"(match));
         return match;
     }
 
@@ -281,6 +286,7 @@ static __always_inline inline int bpf_traffic_account(struct __sk_buff* skb, int
 
     update_stats_with_config(skb, direction, &key, *selectedMap);
     update_app_uid_stats_map(skb, direction, &uid);
+    asm("%0 &= 1" : "+r"(match));
     return match;
 }
 
