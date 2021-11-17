@@ -310,7 +310,15 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
     if (uid != callingUid && !hasUpdateDeviceStatsPermission(callingUid)) {
         return -EPERM;
     }
+    return privilegedTagSocketLocked(sockFd, tag, uid);
+}
 
+int TrafficController::privilegedTagSocket(int sockFd, uint32_t tag, uid_t uid) {
+    std::lock_guard guard(mMutex);
+    return privilegedTagSocketLocked(sockFd, tag, uid);
+}
+
+int TrafficController::privilegedTagSocketLocked(int sockFd, uint32_t tag, uid_t uid) {
     uint64_t sock_cookie = getSocketCookie(sockFd);
     if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
     UidTagValue newKey = {.uid = (uint32_t)uid, .tag = tag};
