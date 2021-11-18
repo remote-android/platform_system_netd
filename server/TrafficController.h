@@ -56,6 +56,11 @@ class TrafficController {
     int tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid) EXCLUDES(mMutex);
 
     /*
+     * Similar as tagSocket, but skip UPDATE_DEVICE_STATS permission check.
+     */
+    int privilegedTagSocket(int sockFd, uint32_t tag, uid_t uid) EXCLUDES(mMutex);
+
+    /*
      * The untag process is similiar to tag socket and both old qtaguid module and
      * new eBPF module have spinlock inside the kernel for concurrent update. No
      * external lock is required.
@@ -240,6 +245,8 @@ class TrafficController {
     UidOwnerMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
 
     bool hasUpdateDeviceStatsPermission(uid_t uid) REQUIRES(mMutex);
+
+    int privilegedTagSocketLocked(int sockFd, uint32_t tag, uid_t uid) REQUIRES(mMutex);
 
     // For testing
     TrafficController(uint32_t perUidLimit, uint32_t totalLimit);
