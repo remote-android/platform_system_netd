@@ -59,6 +59,7 @@ using android::net::UidRangeParcel;
 using android::net::netd::aidl::NativeUidRangeConfig;
 using android::netdutils::DumpWriter;
 using android::netdutils::ScopedIndent;
+using android::netdutils::Status;
 using android::os::ParcelFileDescriptor;
 
 namespace android {
@@ -319,31 +320,60 @@ binder::Status NetdNativeService::bandwidthSetGlobalAlert(int64_t bytes) {
     return statusFromErrcode(res);
 }
 
+namespace {
+
+int manipulateSpecialApps(const std::vector<uint32_t>& appUids, UidOwnerMatchType matchType,
+                          TrafficController::IptOp op) {
+    Status status = gCtls->trafficCtrl.updateUidOwnerMap(appUids, matchType, op);
+    if (!isOk(status)) {
+        ALOGE("unable to update the Bandwidth Uid Map: %s", toString(status).c_str());
+    }
+    return status.code();
+}
+
+int addNaughtyApps(const std::vector<uint32_t>& appUids) {
+    return manipulateSpecialApps(appUids, PENALTY_BOX_MATCH, TrafficController::IptOpInsert);
+}
+
+int removeNaughtyApps(const std::vector<uint32_t>& appUids) {
+    return manipulateSpecialApps(appUids, PENALTY_BOX_MATCH, TrafficController::IptOpDelete);
+}
+
+int addNiceApps(const std::vector<uint32_t>& appUids) {
+    return manipulateSpecialApps(appUids, HAPPY_BOX_MATCH, TrafficController::IptOpInsert);
+}
+
+int removeNiceApps(const std::vector<uint32_t>& appUids) {
+    return manipulateSpecialApps(appUids, HAPPY_BOX_MATCH, TrafficController::IptOpDelete);
+}
+
+}  // namespace
+
 binder::Status NetdNativeService::bandwidthAddNaughtyApp(int32_t uid) {
     NETD_LOCKING_RPC(gCtls->bandwidthCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     std::vector<uint32_t> appUids = {static_cast<uint32_t>(abs(uid))};
-    int res = gCtls->bandwidthCtrl.addNaughtyApps(appUids);
+    int res = addNaughtyApps(appUids);
     return statusFromErrcode(res);
 }
 
 binder::Status NetdNativeService::bandwidthRemoveNaughtyApp(int32_t uid) {
     NETD_LOCKING_RPC(gCtls->bandwidthCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     std::vector<uint32_t> appUids = {static_cast<uint32_t>(abs(uid))};
-    int res = gCtls->bandwidthCtrl.removeNaughtyApps(appUids);
+    int res = removeNaughtyApps(appUids);
     return statusFromErrcode(res);
 }
 
 binder::Status NetdNativeService::bandwidthAddNiceApp(int32_t uid) {
     NETD_LOCKING_RPC(gCtls->bandwidthCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     std::vector<uint32_t> appUids = {static_cast<uint32_t>(abs(uid))};
-    int res = gCtls->bandwidthCtrl.addNiceApps(appUids);
+    int res = addNiceApps(appUids);
     return statusFromErrcode(res);
 }
 
 binder::Status NetdNativeService::bandwidthRemoveNiceApp(int32_t uid) {
     NETD_LOCKING_RPC(gCtls->bandwidthCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     std::vector<uint32_t> appUids = {static_cast<uint32_t>(abs(uid))};
-    int res = gCtls->bandwidthCtrl.removeNiceApps(appUids);
+    int res = removeNiceApps(appUids);
     return statusFromErrcode(res);
 }
 
