@@ -19,7 +19,6 @@
 
 #include <linux/bpf.h>
 
-#include "BandwidthController.h"
 #include "FirewallController.h"
 #include "NetlinkListener.h"
 #include "Network.h"
@@ -99,6 +98,8 @@ class TrafficController {
     int replaceUidOwnerMap(const std::string& name, bool isAllowlist,
                            const std::vector<int32_t>& uids);
 
+    enum IptOp { IptOpInsert, IptOpDelete };
+
     netdutils::Status updateOwnerMapEntry(UidOwnerMatchType match, uid_t uid, FirewallRule rule,
                                           FirewallType type) EXCLUDES(mMutex);
 
@@ -112,8 +113,7 @@ class TrafficController {
     netdutils::Status removeUidInterfaceRules(const std::vector<int32_t>& uids) EXCLUDES(mMutex);
 
     netdutils::Status updateUidOwnerMap(const std::vector<uint32_t>& appStrUids,
-                                        UidOwnerMatchType matchType, BandwidthController::IptOp op)
-            EXCLUDES(mMutex);
+                                        UidOwnerMatchType matchType, IptOp op) EXCLUDES(mMutex);
     static const String16 DUMP_KEYWORD;
 
     int toggleUidOwnerMap(ChildChain chain, bool enable) EXCLUDES(mMutex);
@@ -241,8 +241,6 @@ class TrafficController {
     // Keep track of uids that have permission UPDATE_DEVICE_STATS so we don't
     // need to call back to system server for permission check.
     std::set<uid_t> mPrivilegedUser GUARDED_BY(mMutex);
-
-    UidOwnerMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
 
     bool hasUpdateDeviceStatsPermission(uid_t uid) REQUIRES(mMutex);
 
