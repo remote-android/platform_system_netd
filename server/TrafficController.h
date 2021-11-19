@@ -19,7 +19,6 @@
 
 #include <linux/bpf.h>
 
-#include "BandwidthController.h"
 #include "FirewallController.h"
 #include "NetlinkListener.h"
 #include "Network.h"
@@ -54,6 +53,11 @@ class TrafficController {
      * should be the same. No additional lock needed.
      */
     int tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid) EXCLUDES(mMutex);
+
+    /*
+     * Similar as tagSocket, but skip UPDATE_DEVICE_STATS permission check.
+     */
+    int privilegedTagSocket(int sockFd, uint32_t tag, uid_t uid) EXCLUDES(mMutex);
 
     /*
      * The untag process is similiar to tag socket and both old qtaguid module and
@@ -94,6 +98,8 @@ class TrafficController {
     int replaceUidOwnerMap(const std::string& name, bool isAllowlist,
                            const std::vector<int32_t>& uids);
 
+    enum IptOp { IptOpInsert, IptOpDelete };
+
     netdutils::Status updateOwnerMapEntry(UidOwnerMatchType match, uid_t uid, FirewallRule rule,
                                           FirewallType type) EXCLUDES(mMutex);
 
@@ -107,8 +113,7 @@ class TrafficController {
     netdutils::Status removeUidInterfaceRules(const std::vector<int32_t>& uids) EXCLUDES(mMutex);
 
     netdutils::Status updateUidOwnerMap(const std::vector<uint32_t>& appStrUids,
-                                        UidOwnerMatchType matchType, BandwidthController::IptOp op)
-            EXCLUDES(mMutex);
+                                        UidOwnerMatchType matchType, IptOp op) EXCLUDES(mMutex);
     static const String16 DUMP_KEYWORD;
 
     int toggleUidOwnerMap(ChildChain chain, bool enable) EXCLUDES(mMutex);
@@ -237,9 +242,9 @@ class TrafficController {
     // need to call back to system server for permission check.
     std::set<uid_t> mPrivilegedUser GUARDED_BY(mMutex);
 
-    UidOwnerMatchType jumpOpToMatch(BandwidthController::IptJumpOp jumpHandling);
-
     bool hasUpdateDeviceStatsPermission(uid_t uid) REQUIRES(mMutex);
+
+    int privilegedTagSocketLocked(int sockFd, uint32_t tag, uid_t uid) REQUIRES(mMutex);
 
     // For testing
     TrafficController(uint32_t perUidLimit, uint32_t totalLimit);

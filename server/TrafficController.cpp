@@ -310,7 +310,15 @@ int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t call
     if (uid != callingUid && !hasUpdateDeviceStatsPermission(callingUid)) {
         return -EPERM;
     }
+    return privilegedTagSocketLocked(sockFd, tag, uid);
+}
 
+int TrafficController::privilegedTagSocket(int sockFd, uint32_t tag, uid_t uid) {
+    std::lock_guard guard(mMutex);
+    return privilegedTagSocketLocked(sockFd, tag, uid);
+}
+
+int TrafficController::privilegedTagSocketLocked(int sockFd, uint32_t tag, uid_t uid) {
     uint64_t sock_cookie = getSocketCookie(sockFd);
     if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
     UidTagValue newKey = {.uid = (uint32_t)uid, .tag = tag};
@@ -551,13 +559,12 @@ Status TrafficController::addRule(uint32_t uid, UidOwnerMatchType match, uint32_
 }
 
 Status TrafficController::updateUidOwnerMap(const std::vector<uint32_t>& appUids,
-                                            UidOwnerMatchType matchType,
-                                            BandwidthController::IptOp op) {
+                                            UidOwnerMatchType matchType, IptOp op) {
     std::lock_guard guard(mMutex);
     for (uint32_t uid : appUids) {
-        if (op == BandwidthController::IptOpDelete) {
+        if (op == IptOpDelete) {
             RETURN_IF_NOT_OK(removeRule(uid, matchType));
-        } else if (op == BandwidthController::IptOpInsert) {
+        } else if (op == IptOpInsert) {
             RETURN_IF_NOT_OK(addRule(uid, matchType));
         } else {
             // Cannot happen.
