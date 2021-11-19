@@ -879,7 +879,7 @@ int TetherController::addForwardChainStats(TetherStatsList& statsList,
          * which is what TetherController sets up.
          * The 1st matches rx, and sets up the pair for the tx side.
          */
-        if (!stats.intIface[0]) {
+        if (stats.intIface.empty()) {
             ALOGV("0Filter RX iface_in=%s iface_out=%s rx_bytes=%" PRId64 " rx_packets=%" PRId64
                   " ", iface0.c_str(), iface1.c_str(), bytes, packets);
             stats.intIface = iface0;
