@@ -42,11 +42,13 @@
 #include "UnreachableNetwork.h"
 #include "VirtualNetwork.h"
 #include "netdutils/DumpWriter.h"
+#include "netdutils/Utils.h"
 #include "netid_client.h"
 
 #define DBG 0
 
 using android::netdutils::DumpWriter;
+using android::netdutils::getIfaceNames;
 
 namespace android::net {
 
@@ -150,7 +152,7 @@ NetworkController::NetworkController() :
     // TODO: perhaps only remove the clsact on the interface which is added by
     // RouteController::addInterfaceToPhysicalNetwork. Currently, the netd only
     // attach the clsact to the interface for the physical network.
-    const auto& ifaces = InterfaceController::getIfaceNames();
+    const auto& ifaces = getIfaceNames();
     if (isOk(ifaces)) {
         for (const std::string& iface : ifaces.value()) {
             if (int ifIndex = if_nametoindex(iface.c_str())) {
