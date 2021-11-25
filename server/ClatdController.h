@@ -103,6 +103,10 @@ class ClatdController {
 
     int configure_interface(struct ClatdTracker* tracker, struct tun_data* tunnel) REQUIRES(mutex);
     int configure_tun_ip(const char* v4iface, const char* v4Str, int mtu) REQUIRES(mutex);
+    int configure_clat_ipv6_address(struct ClatdTracker* tracker, struct tun_data* tunnel)
+            REQUIRES(mutex);
+    int add_anycast_address(int sock, struct in6_addr* addr, int ifindex) REQUIRES(mutex);
+    int configure_packet_socket(int sock, in6_addr* addr, int ifindex) REQUIRES(mutex);
 
     // For testing.
     friend class ClatdControllerTest;
