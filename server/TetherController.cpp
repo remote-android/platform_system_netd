@@ -350,8 +350,7 @@ int TetherController::stopTethering() {
 
     ALOGD("Stopping tethering services");
 
-    kill(mDaemonPid, SIGTERM);
-    waitpid(mDaemonPid, nullptr, 0);
+    ::stopProcess(mDaemonPid, "tethering(dnsmasq)");
     mDaemonPid = 0;
     close(mDaemonFd);
     mDaemonFd = -1;

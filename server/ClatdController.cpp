@@ -565,8 +565,7 @@ int ClatdController::stopClatd(const std::string& interface) {
 
     maybeStopBpf(*tracker);
 
-    kill(tracker->pid, SIGTERM);
-    waitpid(tracker->pid, nullptr, 0);
+    ::stopProcess(tracker->pid, "clatd");
 
     setIptablesDropRule(false, tracker->iface, tracker->pfx96String, tracker->v6Str);
     mClatdTrackers.erase(interface);
