@@ -97,26 +97,6 @@ TEST_F(FirewallControllerTest, TestReplaceDenylistUidRule) {
     EXPECT_EQ(expected, makeUidRules(V4, "FW_denychain", false, uids));
 }
 
-TEST_F(FirewallControllerTest, TestEnableChildChains) {
-    std::vector<std::string> expected = {
-        "*filter\n"
-        "-A fw_INPUT -j fw_dozable\n"
-        "-A fw_OUTPUT -j fw_dozable\n"
-        "COMMIT\n"
-    };
-    EXPECT_EQ(0, mFw.enableChildChains(DOZABLE, true));
-    expectIptablesRestoreCommands(expected);
-
-    expected = {
-        "*filter\n"
-        "-D fw_INPUT -j fw_powersave\n"
-        "-D fw_OUTPUT -j fw_powersave\n"
-        "COMMIT\n"
-    };
-    EXPECT_EQ(0, mFw.enableChildChains(POWERSAVE, false));
-    expectIptablesRestoreCommands(expected);
-}
-
 TEST_F(FirewallControllerTest, TestFirewall) {
     std::vector<std::string> enableCommands = {
             "*filter\n"
