@@ -29,7 +29,6 @@
 #include "FirewallController.h"
 #include "IptablesBaseTest.h"
 
-using android::base::Join;
 using android::base::WriteStringToFile;
 
 namespace android {
@@ -50,66 +49,7 @@ protected:
                              const std::vector<int32_t>& d) {
         return mFw.makeUidRules(a, b, c, d);
     }
-
-    int createChain(const char* a, FirewallType b) {
-        return mFw.createChain(a, b);
-    }
 };
-
-TEST_F(FirewallControllerTest, TestCreateAllowlistChain) {
-    std::vector<std::string> expectedRestore4 = {
-            "*filter",
-            ":fw_allowlist -",
-            "-A fw_allowlist -m owner --uid-owner 0-9999 -j RETURN",
-            "-A fw_allowlist -m owner ! --uid-owner 0-4294967294 -j RETURN",
-            "-A fw_allowlist -p esp -j RETURN",
-            "-A fw_allowlist -i lo -j RETURN",
-            "-A fw_allowlist -o lo -j RETURN",
-            "-A fw_allowlist -p tcp --tcp-flags RST RST -j RETURN",
-            "-A fw_allowlist -j DROP",
-            "COMMIT\n"};
-    std::vector<std::string> expectedRestore6 = {
-            "*filter",
-            ":fw_allowlist -",
-            "-A fw_allowlist -m owner --uid-owner 0-9999 -j RETURN",
-            "-A fw_allowlist -m owner ! --uid-owner 0-4294967294 -j RETURN",
-            "-A fw_allowlist -p esp -j RETURN",
-            "-A fw_allowlist -i lo -j RETURN",
-            "-A fw_allowlist -o lo -j RETURN",
-            "-A fw_allowlist -p tcp --tcp-flags RST RST -j RETURN",
-            "-A fw_allowlist -p icmpv6 --icmpv6-type packet-too-big -j RETURN",
-            "-A fw_allowlist -p icmpv6 --icmpv6-type router-solicitation -j RETURN",
-            "-A fw_allowlist -p icmpv6 --icmpv6-type router-advertisement -j RETURN",
-            "-A fw_allowlist -p icmpv6 --icmpv6-type neighbour-solicitation -j RETURN",
-            "-A fw_allowlist -p icmpv6 --icmpv6-type neighbour-advertisement -j RETURN",
-            "-A fw_allowlist -p icmpv6 --icmpv6-type redirect -j RETURN",
-            "-A fw_allowlist -j DROP",
-            "COMMIT\n"};
-    std::vector<std::pair<IptablesTarget, std::string>> expectedRestoreCommands = {
-            {V4, Join(expectedRestore4, '\n')},
-            {V6, Join(expectedRestore6, '\n')},
-    };
-
-    createChain("fw_allowlist", ALLOWLIST);
-    expectIptablesRestoreCommands(expectedRestoreCommands);
-}
-
-TEST_F(FirewallControllerTest, TestCreateDenylistChain) {
-    std::vector<std::string> expectedRestore = {
-            "*filter",
-            ":fw_denylist -",
-            "-A fw_denylist -i lo -j RETURN",
-            "-A fw_denylist -o lo -j RETURN",
-            "-A fw_denylist -p tcp --tcp-flags RST RST -j RETURN",
-            "COMMIT\n"};
-    std::vector<std::pair<IptablesTarget, std::string>> expectedRestoreCommands = {
-            {V4, Join(expectedRestore, '\n')},
-            {V6, Join(expectedRestore, '\n')},
-    };
-
-    createChain("fw_denylist", DENYLIST);
-    expectIptablesRestoreCommands(expectedRestoreCommands);
-}
 
 TEST_F(FirewallControllerTest, TestSetStandbyRule) {
     ExpectedIptablesCommands expected = {
