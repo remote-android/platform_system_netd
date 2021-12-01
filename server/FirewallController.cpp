@@ -39,7 +39,6 @@
 using android::base::Join;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
-using android::net::gCtls;
 
 namespace android {
 namespace net {
@@ -51,11 +50,6 @@ const char* FirewallController::TABLE = "filter";
 const char* FirewallController::LOCAL_INPUT = "fw_INPUT";
 const char* FirewallController::LOCAL_OUTPUT = "fw_OUTPUT";
 const char* FirewallController::LOCAL_FORWARD = "fw_FORWARD";
-
-const char* FirewallController::LOCAL_DOZABLE = "fw_dozable";
-const char* FirewallController::LOCAL_STANDBY = "fw_standby";
-const char* FirewallController::LOCAL_POWERSAVE = "fw_powersave";
-const char* FirewallController::LOCAL_RESTRICTED = "fw_restricted";
 
 // ICMPv6 types that are required for any form of IPv6 connectivity to work. Note that because the
 // fw_dozable chain is called from both INPUT and OUTPUT, this includes both packets that we need
@@ -120,10 +114,6 @@ int FirewallController::resetFirewall(void) {
     return flushRules();
 }
 
-int FirewallController::enableChildChains(ChildChain chain, bool enable) {
-    return gCtls->trafficCtrl.toggleUidOwnerMap(chain, enable);
-}
-
 int FirewallController::isFirewallEnabled(void) {
     // TODO: verify that rules are still in place near top
     return -1;
@@ -161,28 +151,6 @@ int FirewallController::setInterfaceRule(const char* iface, FirewallRule rule) {
         "COMMIT\n"
     }, "\n");
     return (execIptablesRestore(V4V6, command) == 0) ? 0 : -EREMOTEIO;
-}
-
-FirewallType FirewallController::getFirewallType(ChildChain chain) {
-    switch(chain) {
-        case DOZABLE:
-            return ALLOWLIST;
-        case STANDBY:
-            return DENYLIST;
-        case POWERSAVE:
-            return ALLOWLIST;
-        case RESTRICTED:
-            return ALLOWLIST;
-        case NONE:
-            return mFirewallType;
-        default:
-            return DENYLIST;
-    }
-}
-
-int FirewallController::setUidRule(ChildChain chain, int uid, FirewallRule rule) {
-    FirewallType firewallType = getFirewallType(chain);
-    return gCtls->trafficCtrl.changeUidOwnerRule(chain, uid, rule, firewallType);
 }
 
 /* static */
