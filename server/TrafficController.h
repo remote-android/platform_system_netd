@@ -19,7 +19,6 @@
 
 #include <linux/bpf.h>
 
-#include "FirewallController.h"
 #include "NetlinkListener.h"
 #include "Network.h"
 #include "android-base/thread_annotations.h"
@@ -121,6 +120,13 @@ class TrafficController {
     static netdutils::StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener();
 
     void setPermissionForUids(int permission, const std::vector<uid_t>& uids) EXCLUDES(mMutex);
+
+    FirewallType getFirewallType(ChildChain);
+
+    static const char* LOCAL_DOZABLE;
+    static const char* LOCAL_STANDBY;
+    static const char* LOCAL_POWERSAVE;
+    static const char* LOCAL_RESTRICTED;
 
   private:
     /*
