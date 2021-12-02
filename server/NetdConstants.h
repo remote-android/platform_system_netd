@@ -24,6 +24,8 @@
 #include <mutex>
 #include <string>
 
+#include "android/net/INetd.h"
+
 #include <netdutils/UidConstants.h>
 #include <private/android_filesystem_config.h>
 
@@ -73,5 +75,21 @@ namespace android::net {
  * FrameworkListener that passes in commands one at a time.
  */
 extern std::mutex gBigNetdLock;
+
+enum FirewallRule { ALLOW = INetd::FIREWALL_RULE_ALLOW, DENY = INetd::FIREWALL_RULE_DENY };
+
+// ALLOWLIST means the firewall denies all by default, uids must be explicitly ALLOWed
+// DENYLIST means the firewall allows all by default, uids must be explicitly DENYed
+
+enum FirewallType { ALLOWLIST = INetd::FIREWALL_ALLOWLIST, DENYLIST = INetd::FIREWALL_DENYLIST };
+
+enum ChildChain {
+    NONE = INetd::FIREWALL_CHAIN_NONE,
+    DOZABLE = INetd::FIREWALL_CHAIN_DOZABLE,
+    STANDBY = INetd::FIREWALL_CHAIN_STANDBY,
+    POWERSAVE = INetd::FIREWALL_CHAIN_POWERSAVE,
+    RESTRICTED = INetd::FIREWALL_CHAIN_RESTRICTED,
+    INVALID_CHAIN
+};
 
 }  // namespace android::net
