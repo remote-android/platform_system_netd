@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "IptablesRestoreController"
 #include "IptablesRestoreController.h"
 
 #include <poll.h>
@@ -21,7 +22,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define LOG_TAG "IptablesRestoreController"
 #include <android-base/logging.h>
 #include <android-base/file.h>
 #include <netdutils/Syscalls.h>
