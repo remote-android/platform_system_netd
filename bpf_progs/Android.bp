@@ -39,8 +39,8 @@ bpf {
         "-Werror",
     ],
     include_dirs: [
+        "frameworks/libs/net/common/netd/libnetdutils/include",
         "system/netd/libnetdbpf/include",
-        "system/netd/libnetdutils/include",
     ],
 }
 
@@ -52,7 +52,7 @@ bpf {
         "-Werror",
     ],
     include_dirs: [
+        "frameworks/libs/net/common/netd/libnetdutils/include",
         "system/netd/libnetdbpf/include",
-        "system/netd/libnetdutils/include",
     ],
 }
