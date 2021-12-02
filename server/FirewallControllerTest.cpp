@@ -29,8 +29,6 @@
 #include "FirewallController.h"
 #include "IptablesBaseTest.h"
 
-using android::base::WriteStringToFile;
-
 namespace android {
 namespace net {
 
@@ -38,64 +36,9 @@ class FirewallControllerTest : public IptablesBaseTest {
 protected:
     FirewallControllerTest() {
         FirewallController::execIptablesRestore = fakeExecIptablesRestore;
-        // This unit test currently doesn't cover the eBPF owner match case so
-        // we have to manually turn eBPF support off.
-        // TODO: find a way to unit test the eBPF code path.
-        mFw.mUseBpfOwnerMatch = false;
     }
     FirewallController mFw;
-
-    std::string makeUidRules(IptablesTarget a, const char* b, bool c,
-                             const std::vector<int32_t>& d) {
-        return mFw.makeUidRules(a, b, c, d);
-    }
 };
-
-TEST_F(FirewallControllerTest, TestReplaceAllowlistUidRule) {
-    std::string expected =
-            "*filter\n"
-            ":FW_allowchain -\n"
-            "-A FW_allowchain -m owner --uid-owner 10023 -j RETURN\n"
-            "-A FW_allowchain -m owner --uid-owner 10059 -j RETURN\n"
-            "-A FW_allowchain -m owner --uid-owner 10124 -j RETURN\n"
-            "-A FW_allowchain -m owner --uid-owner 10111 -j RETURN\n"
-            "-A FW_allowchain -m owner --uid-owner 110122 -j RETURN\n"
-            "-A FW_allowchain -m owner --uid-owner 210153 -j RETURN\n"
-            "-A FW_allowchain -m owner --uid-owner 210024 -j RETURN\n"
-            "-A FW_allowchain -m owner --uid-owner 0-9999 -j RETURN\n"
-            "-A FW_allowchain -m owner ! --uid-owner 0-4294967294 -j RETURN\n"
-            "-A FW_allowchain -p esp -j RETURN\n"
-            "-A FW_allowchain -i lo -j RETURN\n"
-            "-A FW_allowchain -o lo -j RETURN\n"
-            "-A FW_allowchain -p tcp --tcp-flags RST RST -j RETURN\n"
-            "-A FW_allowchain -p icmpv6 --icmpv6-type packet-too-big -j RETURN\n"
-            "-A FW_allowchain -p icmpv6 --icmpv6-type router-solicitation -j RETURN\n"
-            "-A FW_allowchain -p icmpv6 --icmpv6-type router-advertisement -j RETURN\n"
-            "-A FW_allowchain -p icmpv6 --icmpv6-type neighbour-solicitation -j RETURN\n"
-            "-A FW_allowchain -p icmpv6 --icmpv6-type neighbour-advertisement -j RETURN\n"
-            "-A FW_allowchain -p icmpv6 --icmpv6-type redirect -j RETURN\n"
-            "-A FW_allowchain -j DROP\n"
-            "COMMIT\n";
-
-    std::vector<int32_t> uids = { 10023, 10059, 10124, 10111, 110122, 210153, 210024 };
-    EXPECT_EQ(expected, makeUidRules(V6, "FW_allowchain", true, uids));
-}
-
-TEST_F(FirewallControllerTest, TestReplaceDenylistUidRule) {
-    std::string expected =
-            "*filter\n"
-            ":FW_denychain -\n"
-            "-A FW_denychain -i lo -j RETURN\n"
-            "-A FW_denychain -o lo -j RETURN\n"
-            "-A FW_denychain -p tcp --tcp-flags RST RST -j RETURN\n"
-            "-A FW_denychain -m owner --uid-owner 10023 -j DROP\n"
-            "-A FW_denychain -m owner --uid-owner 10059 -j DROP\n"
-            "-A FW_denychain -m owner --uid-owner 10124 -j DROP\n"
-            "COMMIT\n";
-
-    std::vector<int32_t> uids = { 10023, 10059, 10124 };
-    EXPECT_EQ(expected, makeUidRules(V4, "FW_denychain", false, uids));
-}
 
 TEST_F(FirewallControllerTest, TestFirewall) {
     std::vector<std::string> enableCommands = {
@@ -168,53 +111,6 @@ TEST_F(FirewallControllerTest, TestFirewall) {
     // nothing. This seems like a clear bug.
     EXPECT_EQ(0, mFw.setFirewallType(ALLOWLIST));
     expectIptablesRestoreCommands(noCommands);
-}
-
-TEST_F(FirewallControllerTest, TestDiscoverMaximumValidUid) {
-    struct {
-        const std::string description;
-        const std::string content;
-        const uint32_t expected;
-    } testCases[] = {
-            {
-                    .description = "root namespace case",
-                    .content = "         0          0 4294967295",
-                    .expected = 4294967294,
-            },
-            {
-                    .description = "container namespace case",
-                    .content = "         0     655360       5000\n"
-                               "      5000        600         50\n"
-                               "      5050     660410    1994950\n",
-                    .expected = 1999999,
-            },
-            {
-                    .description = "garbage content case",
-                    .content = "garbage",
-                    .expected = 4294967294,
-            },
-            {
-                    .description = "no content case",
-                    .content = "",
-                    .expected = 4294967294,
-            },
-    };
-
-    const std::string tempFile = "/data/local/tmp/fake_uid_mapping";
-
-    for (const auto& test : testCases) {
-        EXPECT_TRUE(WriteStringToFile(test.content, tempFile, false));
-        uint32_t got = FirewallController::discoverMaximumValidUid(tempFile);
-        EXPECT_EQ(0, remove(tempFile.c_str()));
-        if (got != test.expected) {
-            FAIL() << test.description << ":\n"
-                   << test.content << "\ngot " << got << ", but expected " << test.expected;
-        }
-    }
-
-    // Also check when the file is not defined
-    EXPECT_NE(0, access(tempFile.c_str(), F_OK));
-    EXPECT_EQ(4294967294, FirewallController::discoverMaximumValidUid(tempFile));
 }
 
 }  // namespace net

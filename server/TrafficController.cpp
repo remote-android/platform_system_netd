@@ -592,6 +592,7 @@ int TrafficController::changeUidOwnerRule(ChildChain chain, uid_t uid, FirewallR
             break;
         case NONE:
         default:
+            ALOGW("Unknown child chain: %d", chain);
             return -EINVAL;
     }
     if (!isOk(res)) {
