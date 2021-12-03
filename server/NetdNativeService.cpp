@@ -276,7 +276,7 @@ binder::Status NetdNativeService::firewallReplaceUidChain(const std::string& cha
                                                           const std::vector<int32_t>& uids,
                                                           bool* ret) {
     NETD_LOCKING_RPC(gCtls->firewallCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    int err = gCtls->firewallCtrl.replaceUidChain(chainName, isAllowlist, uids);
+    int err = gCtls->trafficCtrl.replaceUidOwnerMap(chainName, isAllowlist, uids);
     *ret = (err == 0);
     return binder::Status::ok();
 }
@@ -1239,8 +1239,9 @@ binder::Status NetdNativeService::firewallSetUidRule(int32_t childChain, int32_t
     NETD_LOCKING_RPC(gCtls->firewallCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     auto chain = static_cast<ChildChain>(childChain);
     auto rule = static_cast<FirewallRule>(firewallRule);
+    FirewallType fType = gCtls->trafficCtrl.getFirewallType(chain);
 
-    int res = gCtls->firewallCtrl.setUidRule(chain, uid, rule);
+    int res = gCtls->trafficCtrl.changeUidOwnerRule(chain, uid, rule, fType);
     return statusFromErrcode(res);
 }
 
@@ -1248,7 +1249,7 @@ binder::Status NetdNativeService::firewallEnableChildChain(int32_t childChain, b
     NETD_LOCKING_RPC(gCtls->firewallCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
     auto chain = static_cast<ChildChain>(childChain);
 
-    int res = gCtls->firewallCtrl.enableChildChains(chain, enable);
+    int res = gCtls->trafficCtrl.toggleUidOwnerMap(chain, enable);
     return statusFromErrcode(res);
 }
 

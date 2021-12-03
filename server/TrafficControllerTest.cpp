@@ -35,7 +35,6 @@
 
 #include <netdutils/MockSyscalls.h>
 
-#include "FirewallController.h"
 #include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 
