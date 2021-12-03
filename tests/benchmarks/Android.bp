@@ -50,6 +50,7 @@ cc_benchmark {
     shared_libs: [
         "libbase",
         "libbpf_android",
+        "liblog",
         "libnetdutils",
     ],
     srcs: [
