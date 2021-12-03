@@ -29,7 +29,7 @@
 #include "Fwmark.h"
 #include "NetdConstants.h"
 #include "bpf/BpfMap.h"
-#include "netdbpf/bpf_shared.h"
+#include "bpf_shared.h"
 #include "netdutils/DumpWriter.h"
 
 namespace android {

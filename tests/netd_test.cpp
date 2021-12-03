@@ -32,8 +32,6 @@
 #include <android-base/unique_fd.h>
 
 #define LOG_TAG "NetdTest"
-#include "bpf/BpfMap.h"
-#include "netdbpf/bpf_shared.h"
 
 #include "TcUtils.h"
 
