@@ -28,7 +28,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "bpf_net_helpers.h"
-#include "netdbpf/bpf_shared.h"
+#include "bpf_shared.h"
 
 // This is defined for cgroup bpf filter only.
 #define BPF_DROP_UNLESS_DNS 2
