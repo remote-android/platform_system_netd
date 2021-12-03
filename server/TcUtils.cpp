@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#define LOG_TAG "TcUtils"
+
 #include "TcUtils.h"
 
 #include <arpa/inet.h>
@@ -27,7 +29,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define LOG_TAG "TcUtils"
 #include <log/log.h>
 
 #include "NetlinkCommands.h"

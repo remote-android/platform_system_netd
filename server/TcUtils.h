@@ -25,7 +25,7 @@
 #include <string>
 
 #include "bpf/BpfUtils.h"
-#include "netdbpf/bpf_shared.h"
+#include "bpf_shared.h"
 
 namespace android {
 namespace net {
