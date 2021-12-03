@@ -22,10 +22,6 @@
 
 #include <gtest/gtest.h>
 
-#include <android-base/file.h>
-#include <android-base/stringprintf.h>
-#include <android-base/strings.h>
-
 #include "FirewallController.h"
 #include "IptablesBaseTest.h"
 
