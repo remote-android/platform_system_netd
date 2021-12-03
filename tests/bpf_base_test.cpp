@@ -36,7 +36,7 @@
 
 #include "bpf/BpfMap.h"
 #include "bpf/BpfUtils.h"
-#include "netdbpf/bpf_shared.h"
+#include "bpf_shared.h"
 
 using android::base::Result;
 

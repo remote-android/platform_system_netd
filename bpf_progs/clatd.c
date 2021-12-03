@@ -32,7 +32,7 @@
 
 #include "bpf_helpers.h"
 #include "bpf_net_helpers.h"
-#include "netdbpf/bpf_shared.h"
+#include "bpf_shared.h"
 
 // From kernel:include/net/ip.h
 #define IP_DF 0x4000  // Flag: "Don't Fragment"

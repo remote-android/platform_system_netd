@@ -55,11 +55,11 @@
 #include <binder/IPCThreadState.h>
 #include <bpf/BpfMap.h>
 #include <bpf/BpfUtils.h>
+#include <bpf_shared.h>
 #include <com/android/internal/net/BnOemNetdUnsolicitedEventListener.h>
 #include <com/android/internal/net/IOemNetd.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
-#include <netdbpf/bpf_shared.h>
 #include <netutils/ifc.h>
 #include <utils/Errors.h>
 #include "Fwmark.h"
