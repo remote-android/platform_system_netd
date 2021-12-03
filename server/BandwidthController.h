@@ -24,7 +24,6 @@
 #include <mutex>
 
 #include "NetdConstants.h"
-#include "netdbpf/bpf_shared.h"
 
 class BandwidthController {
 public:
