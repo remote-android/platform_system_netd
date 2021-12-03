@@ -32,9 +32,9 @@
 
 #include "log/log.h"
 
+#include <WaitForProgsLoaded.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
-#include <libbpf_android.h>
 #include <netdutils/Stopwatch.h>
 
 #include "Controllers.h"
