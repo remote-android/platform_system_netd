@@ -76,6 +76,7 @@
 #include "netdutils/InternetAddresses.h"
 #include "netdutils/Stopwatch.h"
 #include "netdutils/Syscalls.h"
+#include "netdutils/Utils.h"
 #include "netid_client.h"  // NETID_UNSET
 #include "test_utils.h"
 #include "tun_interface.h"
@@ -128,6 +129,7 @@ using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::net::UidRanges;
 using android::net::netd::aidl::NativeUidRangeConfig;
+using android::netdutils::getIfaceNames;
 using android::netdutils::IPAddress;
 using android::netdutils::ScopedAddrinfo;
 using android::netdutils::sSyscalls;
@@ -2693,7 +2695,7 @@ std::vector<std::string> getInterfaceFlags(const std::string& ifName) {
 }
 
 bool compareListInterface(const std::vector<std::string>& interfaceList) {
-    const auto& res = InterfaceController::getIfaceNames();
+    const auto& res = getIfaceNames();
     EXPECT_TRUE(isOk(res));
 
     std::vector<std::string> resIfList;
