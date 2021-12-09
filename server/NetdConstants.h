@@ -41,6 +41,8 @@ int parsePrefix(const char *prefix, uint8_t *family, void *address, int size, ui
 void blockSigpipe();
 void setCloseOnExec(const char *sock);
 
+void stopProcess(int pid, const char* processName);
+
 // TODO: use std::size() instead.
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
