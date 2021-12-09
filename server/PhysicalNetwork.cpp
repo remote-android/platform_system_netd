@@ -164,7 +164,7 @@ int PhysicalNetwork::removeAsDefault() {
     return 0;
 }
 
-int PhysicalNetwork::addUsers(const UidRanges& uidRanges, uint32_t subPriority) {
+int PhysicalNetwork::addUsers(const UidRanges& uidRanges, int32_t subPriority) {
     if (!isValidSubPriority(subPriority) || !canAddUidRanges(uidRanges, subPriority)) {
         return -EINVAL;
     }
@@ -181,7 +181,7 @@ int PhysicalNetwork::addUsers(const UidRanges& uidRanges, uint32_t subPriority) 
     return 0;
 }
 
-int PhysicalNetwork::removeUsers(const UidRanges& uidRanges, uint32_t subPriority) {
+int PhysicalNetwork::removeUsers(const UidRanges& uidRanges, int32_t subPriority) {
     if (!isValidSubPriority(subPriority)) return -EINVAL;
 
     for (const std::string& interface : mInterfaces) {
@@ -236,9 +236,12 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
     return 0;
 }
 
-bool PhysicalNetwork::isValidSubPriority(uint32_t priority) {
-    return priority >= UidRanges::DEFAULT_SUB_PRIORITY &&
-           priority <= UidRanges::LOWEST_SUB_PRIORITY;
+bool PhysicalNetwork::isValidSubPriority(int32_t priority) {
+    // RESERVED_SUB_PRIORITY and INT_MAX are for special purpose.
+    return priority == UidRanges::RESERVED_SUB_PRIORITY ||
+           (priority >= UidRanges::DEFAULT_SUB_PRIORITY &&
+            priority <= UidRanges::LOWEST_SUB_PRIORITY) ||
+           priority == INT_MAX;
 }
 
 }  // namespace android::net
