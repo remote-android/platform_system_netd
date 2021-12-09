@@ -43,7 +43,7 @@
 #include "netdutils/DumpWriter.h"
 
 extern "C" {
-#include "netutils/checksum.h"
+#include "checksum.h"
 }
 
 #include "Fwmark.h"
