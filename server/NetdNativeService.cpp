@@ -32,6 +32,7 @@
 #include <cutils/properties.h>
 #include <log/log.h>
 #include <netdutils/DumpWriter.h>
+#include <netdutils/Utils.h>
 #include <utils/Errors.h>
 #include <utils/String16.h>
 
@@ -58,6 +59,7 @@ using android::net::TetherStatsParcel;
 using android::net::UidRangeParcel;
 using android::net::netd::aidl::NativeUidRangeConfig;
 using android::netdutils::DumpWriter;
+using android::netdutils::getIfaceNames;
 using android::netdutils::ScopedIndent;
 using android::netdutils::Status;
 using android::os::ParcelFileDescriptor;
@@ -921,7 +923,7 @@ std::string addCurlyBrackets(const std::string& s) {
 
 binder::Status NetdNativeService::interfaceGetList(std::vector<std::string>* interfaceListResult) {
     NETD_LOCKING_RPC(InterfaceController::mutex, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    const auto& ifaceList = InterfaceController::getIfaceNames();
+    const auto& ifaceList = getIfaceNames();
 
     interfaceListResult->clear();
     interfaceListResult->reserve(ifaceList.value().size());
