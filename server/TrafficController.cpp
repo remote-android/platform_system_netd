@@ -42,11 +42,11 @@
 
 #include <netdutils/Misc.h>
 #include <netdutils/Syscalls.h>
+#include <netdutils/Utils.h>
 #include <processgroup/processgroup.h>
 #include "TrafficController.h"
 #include "bpf/BpfMap.h"
 
-#include "InterfaceController.h"
 #include "NetlinkListener.h"
 #include "netdutils/DumpWriter.h"
 #include "qtaguid/qtaguid.h"
@@ -63,6 +63,7 @@ using bpf::retrieveProgram;
 using bpf::synchronizeKernelRCU;
 using netdutils::DumpWriter;
 using netdutils::extract;
+using netdutils::getIfaceList;
 using netdutils::ScopedIndent;
 using netdutils::Slice;
 using netdutils::sSyscalls;
@@ -267,7 +268,7 @@ Status TrafficController::start() {
     // Fetch the list of currently-existing interfaces. At this point NetlinkHandler is
     // already running, so it will call addInterface() when any new interface appears.
     std::map<std::string, uint32_t> ifacePairs;
-    ASSIGN_OR_RETURN(ifacePairs, InterfaceController::getIfaceList());
+    ASSIGN_OR_RETURN(ifacePairs, getIfaceList());
     for (const auto& ifacePair:ifacePairs) {
         addInterface(ifacePair.first.c_str(), ifacePair.second);
     }
