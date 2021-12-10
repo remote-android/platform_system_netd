@@ -306,8 +306,14 @@ DEFINE_BPF_PROG("skfilter/egress/xtbpf", AID_ROOT, AID_NET_ADMIN, xt_bpf_egress_
     // Clat daemon does not generate new traffic, all its traffic is accounted for already
     // on the v4-* interfaces (except for the 20 (or 28) extra bytes of IPv6 vs IPv4 overhead,
     // but that can be corrected for later when merging v4-foo stats into interface foo's).
+    // TODO: remove sock_uid check once Nat464Xlat javaland adds the socket tag AID_CLAT for clat.
     uint32_t sock_uid = bpf_get_socket_uid(skb);
     if (sock_uid == AID_CLAT) return BPF_NOMATCH;
+    if (sock_uid == AID_SYSTEM) {
+        uint64_t cookie = bpf_get_socket_cookie(skb);
+        UidTagValue* utag = bpf_cookie_tag_map_lookup_elem(&cookie);
+        if (utag && utag->uid == AID_CLAT) return BPF_NOMATCH;
+    }
 
     uint32_t key = skb->ifindex;
     update_iface_stats_map(skb, BPF_EGRESS, &key);
