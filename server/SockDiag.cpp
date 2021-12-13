@@ -133,7 +133,10 @@ int SockDiag::sendDumpRequest(uint8_t proto, uint8_t family, uint8_t extensions,
     }
     request.nlh.nlmsg_len = len;
 
-    if (writev(mSock, iov, iovcnt) != (ssize_t) len) {
+    ssize_t writevRet = writev(mSock, iov, iovcnt);
+    // Don't let pointers to the stack escape.
+    iov[0] = {nullptr, 0};
+    if (writevRet != (ssize_t)len) {
         return -errno;
     }
 
