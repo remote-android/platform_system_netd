@@ -31,7 +31,7 @@ VirtualNetwork::VirtualNetwork(unsigned netId, bool secure) : Network(netId, sec
 
 VirtualNetwork::~VirtualNetwork() {}
 
-int VirtualNetwork::addUsers(const UidRanges& uidRanges, uint32_t subPriority) {
+int VirtualNetwork::addUsers(const UidRanges& uidRanges, int32_t subPriority) {
     if (!isValidSubPriority(subPriority) || !canAddUidRanges(uidRanges, subPriority)) {
         return -EINVAL;
     }
@@ -48,7 +48,7 @@ int VirtualNetwork::addUsers(const UidRanges& uidRanges, uint32_t subPriority) {
     return 0;
 }
 
-int VirtualNetwork::removeUsers(const UidRanges& uidRanges, uint32_t subPriority) {
+int VirtualNetwork::removeUsers(const UidRanges& uidRanges, int32_t subPriority) {
     if (!isValidSubPriority(subPriority)) return -EINVAL;
 
     for (const std::string& interface : mInterfaces) {
@@ -89,7 +89,7 @@ int VirtualNetwork::removeInterface(const std::string& interface) {
     return 0;
 }
 
-bool VirtualNetwork::isValidSubPriority(uint32_t priority) {
+bool VirtualNetwork::isValidSubPriority(int32_t priority) {
     // Only supports default subsidiary permissions.
     return priority == UidRanges::DEFAULT_SUB_PRIORITY;
 }

@@ -619,7 +619,7 @@ int isWrongNetworkForUidRanges(unsigned netId, Network* network) {
 }  // namespace
 
 int NetworkController::addUsersToNetwork(unsigned netId, const UidRanges& uidRanges,
-                                         uint32_t subPriority) {
+                                         int32_t subPriority) {
     ScopedWLock lock(mRWLock);
     Network* network = getNetworkLocked(netId);
     if (int ret = isWrongNetworkForUidRanges(netId, network)) {
@@ -629,7 +629,7 @@ int NetworkController::addUsersToNetwork(unsigned netId, const UidRanges& uidRan
 }
 
 int NetworkController::removeUsersFromNetwork(unsigned netId, const UidRanges& uidRanges,
-                                              uint32_t subPriority) {
+                                              int32_t subPriority) {
     ScopedWLock lock(mRWLock);
     Network* network = getNetworkLocked(netId);
     if (int ret = isWrongNetworkForUidRanges(netId, network)) {
@@ -801,7 +801,7 @@ Network* NetworkController::getNetworkLocked(unsigned netId) const {
 }
 
 VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) const {
-    uint32_t subPriority;
+    int32_t subPriority;
     for (const auto& [_, network] : mNetworks) {
         if (network->isVirtual() && network->appliesToUser(uid, &subPriority)) {
             return static_cast<VirtualNetwork*>(network);
@@ -816,9 +816,9 @@ VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) con
 // undefined. That is a configuration error.
 Network* NetworkController::getPhysicalOrUnreachableNetworkForUserLocked(uid_t uid) const {
     Network* bestNetwork = nullptr;
-    unsigned bestSubPriority = UidRanges::LOWEST_SUB_PRIORITY + 1;
+    int32_t bestSubPriority = UidRanges::LOWEST_SUB_PRIORITY + 1;
     for (const auto& [netId, network] : mNetworks) {
-        uint32_t subPriority;
+        int32_t subPriority;
         if (!network->isPhysical() && !network->isUnreachable()) continue;
         if (!network->appliesToUser(uid, &subPriority)) continue;
         if (subPriority < bestSubPriority) {
@@ -854,7 +854,7 @@ int NetworkController::checkUserNetworkAccessLocked(uid_t uid, unsigned netId) c
         return 0;
     }
     // If the UID wants to use a VPN, it can do so if and only if the VPN applies to the UID.
-    uint32_t subPriority;
+    int32_t subPriority;
     if (network->isVirtual()) {
         return network->appliesToUser(uid, &subPriority) ? 0 : -EPERM;
     }
