@@ -28,6 +28,7 @@ namespace net {
 
 class UidRanges {
 public:
+    static constexpr int RESERVED_SUB_PRIORITY = -1;
     static constexpr int DEFAULT_SUB_PRIORITY = 0;
     static constexpr int LOWEST_SUB_PRIORITY = 999;
 
