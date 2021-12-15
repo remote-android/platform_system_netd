@@ -84,6 +84,9 @@ cc_library_static {
         "netd_aidl_interface-V7-cpp",
         "netd_event_listener_interface-V1-cpp",
     ],
+    static_libs: [
+        "libip_checksum",
+    ],
     aidl: {
         export_aidl_headers: true,
         local_include_dirs: ["binder"],
@@ -130,6 +133,7 @@ cc_binary {
         "oemnetd_aidl_interface-cpp",
     ],
     static_libs: [
+        "libip_checksum",
         "libnetd_server",
     ],
     srcs: [
@@ -222,6 +226,7 @@ cc_test {
     ],
     static_libs: [
         "libgmock",
+        "libip_checksum",
         "libnetd_server",
         "libnetd_test_tun_interface",
         "libqtaguid",
