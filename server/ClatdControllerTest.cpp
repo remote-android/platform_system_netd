@@ -27,7 +27,7 @@
 #include <netutils/ifc.h>
 
 extern "C" {
-#include <netutils/checksum.h>
+#include <checksum.h>
 }
 
 #include "ClatdController.h"
