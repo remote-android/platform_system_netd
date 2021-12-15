@@ -239,10 +239,15 @@ int padInterfaceName(const char* input, char* name, size_t* length, uint16_t* pa
 //   range (inclusive). Otherwise, the rule matches packets from all UIDs.
 //
 // Returns 0 on success or negative errno on failure.
-[[nodiscard]] static int modifyIpRule(uint16_t action, uint32_t priority, uint8_t ruleType,
+[[nodiscard]] static int modifyIpRule(uint16_t action, int32_t priority, uint8_t ruleType,
                                       uint32_t table, uint32_t fwmark, uint32_t mask,
                                       const char* iif, const char* oif, uid_t uidStart,
                                       uid_t uidEnd) {
+    if (priority < 0) {
+        ALOGE("invalid IP-rule priority %d", priority);
+        return -ERANGE;
+    }
+
     // Ensure that if you set a bit in the fwmark, it's not being ignored by the mask.
     if (fwmark & ~mask) {
         ALOGE("mask 0x%x does not select all the bits set in fwmark 0x%x", mask, fwmark);
@@ -326,14 +331,14 @@ int padInterfaceName(const char* input, char* name, size_t* length, uint16_t* pa
     return 0;
 }
 
-[[nodiscard]] static int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
+[[nodiscard]] static int modifyIpRule(uint16_t action, int32_t priority, uint32_t table,
                                       uint32_t fwmark, uint32_t mask, const char* iif,
                                       const char* oif, uid_t uidStart, uid_t uidEnd) {
     return modifyIpRule(action, priority, FR_ACT_TO_TBL, table, fwmark, mask, iif, oif, uidStart,
                         uidEnd);
 }
 
-[[nodiscard]] static int modifyIpRule(uint16_t action, uint32_t priority, uint32_t table,
+[[nodiscard]] static int modifyIpRule(uint16_t action, int32_t priority, uint32_t table,
                                       uint32_t fwmark, uint32_t mask) {
     return modifyIpRule(action, priority, table, fwmark, mask, IIF_NONE, OIF_NONE, INVALID_UID,
                         INVALID_UID);
@@ -486,14 +491,14 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
 // have, if they are subject to this VPN, their traffic has to go through it. Allows the traffic to
 // bypass the VPN if the protectedFromVpn bit is set.
 [[nodiscard]] static int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
-                                               uint32_t subPriority, bool secure, bool add) {
+                                               int32_t subPriority, bool secure, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
     fwmark.protectedFromVpn = false;
     mask.protectedFromVpn = true;
 
-    uint32_t priority;
+    int32_t priority;
 
     if (secure) {
         priority = RULE_PRIORITY_SECURE_VPN;
@@ -539,7 +544,7 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
 // modifyNetworkPermission().
 [[nodiscard]] static int modifyExplicitNetworkRule(unsigned netId, uint32_t table,
                                                    Permission permission, uid_t uidStart,
-                                                   uid_t uidEnd, uint32_t subPriority, bool add) {
+                                                   uid_t uidEnd, int32_t subPriority, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -563,7 +568,7 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
 // the outgoing interface (typically for link-local communications).
 [[nodiscard]] static int modifyOutputInterfaceRules(const char* interface, uint32_t table,
                                                     Permission permission, uid_t uidStart,
-                                                    uid_t uidEnd, uint32_t subPriority, bool add) {
+                                                    uid_t uidEnd, int32_t subPriority, bool add) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -735,7 +740,7 @@ int RouteController::configureDummyNetwork() {
 }
 
 [[nodiscard]] static int modifyUidNetworkRule(unsigned netId, uint32_t table, uid_t uidStart,
-                                              uid_t uidEnd, uint32_t subPriority, bool add,
+                                              uid_t uidEnd, int32_t subPriority, bool add,
                                               bool explicitSelect) {
     if ((uidStart == INVALID_UID) || (uidEnd == INVALID_UID)) {
         ALOGE("modifyUidNetworkRule, invalid UIDs (%u, %u)", uidStart, uidEnd);
@@ -763,7 +768,7 @@ int RouteController::configureDummyNetwork() {
 }
 
 [[nodiscard]] static int modifyUidDefaultNetworkRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
-                                                     uint32_t subPriority, bool add) {
+                                                     int32_t subPriority, bool add) {
     if ((uidStart == INVALID_UID) || (uidEnd == INVALID_UID)) {
         ALOGE("modifyUidDefaultNetworkRule, invalid UIDs (%u, %u)", uidStart, uidEnd);
         return -EUSERS;
@@ -854,7 +859,7 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
 }
 
 [[nodiscard]] static int modifyUidUnreachableRule(unsigned netId, uid_t uidStart, uid_t uidEnd,
-                                                  uint32_t subPriority, bool add,
+                                                  int32_t subPriority, bool add,
                                                   bool explicitSelect) {
     if ((uidStart == INVALID_UID) || (uidEnd == INVALID_UID)) {
         ALOGE("modifyUidUnreachableRule, invalid UIDs (%u, %u)", uidStart, uidEnd);
@@ -882,7 +887,7 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
 }
 
 [[nodiscard]] static int modifyUidDefaultUnreachableRule(uid_t uidStart, uid_t uidEnd,
-                                                         uint32_t subPriority, bool add) {
+                                                         int32_t subPriority, bool add) {
     if ((uidStart == INVALID_UID) || (uidEnd == INVALID_UID)) {
         ALOGE("modifyUidDefaultUnreachableRule, invalid UIDs (%u, %u)", uidStart, uidEnd);
         return -EUSERS;
