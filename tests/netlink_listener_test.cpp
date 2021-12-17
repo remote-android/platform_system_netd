@@ -48,8 +48,8 @@ constexpr uint32_t TEST_TAG = 0xFF0F0F0F;
 constexpr uint32_t SOCK_CLOSE_WAIT_US = 30 * 1000;
 constexpr uint32_t ENOBUFS_POLL_WAIT_US = 10 * 1000;
 
+using android::base::Error;
 using android::base::Result;
-using android::base::ResultError;
 
 // This test set up a SkDestroyListener that is runing parallel with the production
 // SkDestroyListener. The test will create thousands of sockets and tag them on the
@@ -92,9 +92,9 @@ class NetlinkListenerTest : public testing::Test {
         const auto checkGarbageTags = [](const uint64_t&, const UidTagValue& value,
                                          const BpfMap<uint64_t, UidTagValue>&) -> Result<void> {
             if ((TEST_UID == value.uid) && (TEST_TAG == value.tag)) {
-                return ResultError("Closed socket is not untagged", EUCLEAN);
+                return Error(EUCLEAN) << "Closed socket is not untagged";
             }
-            return Result<void>();
+            return {};
         };
         return mCookieTagMap.iterateWithValue(checkGarbageTags);
     }
