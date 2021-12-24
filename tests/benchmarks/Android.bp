@@ -47,9 +47,9 @@ cc_benchmark {
     name: "bpf_benchmark",
     defaults: ["netd_defaults"],
     require_root: true,
+    header_libs: ["bpf_headers"],
     shared_libs: [
         "libbase",
-        "libbpf_android",
         "liblog",
         "libnetdutils",
     ],
