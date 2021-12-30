@@ -437,7 +437,7 @@ int ClatdController::ClatdTracker::init(unsigned networkId, const std::string& i
  *   v4iface - tunnel interface name
  *   v4Str   - tunnel ipv4 address
  *   mtu     - mtu of tun device
- * returns: 0 on success, errno on failure
+ * returns: 0 on success, -errno on failure
  */
 int ClatdController::configure_tun_ip(const char* v4iface, const char* v4Str, int mtu) {
     ALOGI("Using IPv4 address %s on %s", v4Str, v4iface);
@@ -446,7 +446,7 @@ int ClatdController::configure_tun_ip(const char* v4iface, const char* v4Str, in
     // framework will be notified and will assume the interface's configuration has been finalized.
     std::string mtuStr = std::to_string(mtu);
     if (int res = InterfaceController::setMtu(v4iface, mtuStr.c_str())) {
-        ALOGE("setMtu %s failed (%s)", v4iface, strerror(res));
+        ALOGE("setMtu %s failed (%s)", v4iface, strerror(-res));
         return res;
     }
 
@@ -458,7 +458,7 @@ int ClatdController::configure_tun_ip(const char* v4iface, const char* v4Str, in
     ifConfig.flags = std::vector<std::string>{std::string(String8(INetd::IF_STATE_UP().string()))};
     const auto& status = InterfaceController::setCfg(ifConfig);
     if (!status.ok()) {
-        ALOGE("configure_tun_ip/setCfg failed: %s", strerror(-status.code()));
+        ALOGE("configure_tun_ip/setCfg failed: %s", strerror(status.code()));
         return -status.code();
     }
 
@@ -470,7 +470,7 @@ int ClatdController::configure_tun_ip(const char* v4iface, const char* v4Str, in
  *   sock      - the socket to add the address to
  *   addr      - the IP address to add
  *   ifindex   - index of interface to add the address to
- * returns: 0 on success, errno on failure
+ * returns: 0 on success, -errno on failure
  */
 int ClatdController::add_anycast_address(int sock, struct in6_addr* addr, int ifindex) {
     struct ipv6_mreq mreq = {*addr, ifindex};
@@ -478,7 +478,7 @@ int ClatdController::add_anycast_address(int sock, struct in6_addr* addr, int if
     if (ret) {
         ret = errno;
         ALOGE("setsockopt(IPV6_JOIN_ANYCAST): %s", strerror(errno));
-        return ret;
+        return -ret;
     }
 
     return 0;
@@ -489,7 +489,7 @@ int ClatdController::add_anycast_address(int sock, struct in6_addr* addr, int if
  *   sock    - the socket to configure
  *   addr    - the IP address to filter
  *   ifindex - index of interface to add the filter to
- * returns: 0 on success, errno on failure
+ * returns: 0 on success, -errno on failure
  */
 int ClatdController::configure_packet_socket(int sock, in6_addr* addr, int ifindex) {
     uint32_t* ipv6 = addr->s6_addr32;
@@ -518,7 +518,7 @@ int ClatdController::configure_packet_socket(int sock, in6_addr* addr, int ifind
     if (setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &filter, sizeof(filter))) {
         int res = errno;
         ALOGE("attach packet filter failed: %s", strerror(errno));
-        return res;
+        return -res;
     }
 
     struct sockaddr_ll sll = {
@@ -531,7 +531,7 @@ int ClatdController::configure_packet_socket(int sock, in6_addr* addr, int ifind
     if (bind(sock, (struct sockaddr*)&sll, sizeof(sll))) {
         int res = errno;
         ALOGE("binding packet socket: %s", strerror(errno));
-        return res;
+        return -res;
     }
 
     return 0;
@@ -541,14 +541,14 @@ int ClatdController::configure_packet_socket(int sock, in6_addr* addr, int ifind
  * picks the clat IPv6 address and configures packet translation to use it.
  *   tunnel - tun device data
  *   interface - uplink interface name
- * returns: 0 on success, errno on failure
+ * returns: 0 on success, -errno on failure
  */
 int ClatdController::configure_clat_ipv6_address(struct ClatdTracker* tracker,
                                                  struct tun_data* tunnel) {
     ALOGI("Using IPv6 address %s on %s", tracker->v6Str, tracker->iface);
 
     // Start translating packets to the new prefix.
-    // TODO: return if error?
+    // TODO: return if error. b/212679140 needs to be fixed first.
     add_anycast_address(tunnel->write_fd6, &tracker->v6, tracker->ifIndex);
 
     // Update our packet socket filter to reflect the new 464xlat IP address.
@@ -613,7 +613,7 @@ int ClatdController::detect_mtu(const struct in6_addr* plat_subnet, uint32_t pla
  * reads the configuration and applies it to the interface
  *   tracker - clat tracker
  *   tunnel - tun device data
- * returns: 0 on success, errno on failure
+ * returns: 0 on success, -errno on failure
  */
 int ClatdController::configure_interface(struct ClatdTracker* tracker, struct tun_data* tunnel) {
     int res = detect_mtu(&tracker->pfx96, htonl(0x08080808), tracker->fwmark.intValue);
