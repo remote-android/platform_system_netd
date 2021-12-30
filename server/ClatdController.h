@@ -54,7 +54,9 @@ class ClatdController {
 
     static constexpr const char LOCAL_RAW_PREROUTING[] = "clat_raw_PREROUTING";
 
-  private:
+    // Public struct ClatdTracker and tun_data for testing. gtest/TEST_F macro changes the class
+    // name. In TEST_F(ClatdControllerTest..), can't access struct ClatdTracker and tun_data.
+    // TODO: probably use gtest/FRIEND_TEST macro.
     struct ClatdTracker {
         pid_t pid = -1;
         unsigned ifIndex;
@@ -74,10 +76,12 @@ class ClatdController {
                  const std::string& nat64Prefix);
     };
 
+    // Public for testing. See above reason in struct ClatdTracker.
     struct tun_data {
         int read_fd6, write_fd6, fd4;
     };
 
+  private:
     std::mutex mutex;
 
     const NetworkController* mNetCtrl GUARDED_BY(mutex);
