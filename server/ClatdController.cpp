@@ -517,7 +517,31 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
     char passedRawSockStr[INT32_STRLEN];
     snprintf(passedRawSockStr, sizeof(passedRawSockStr), "%d", passedRawSock.get());
 
-    // 9. we're going to use this as argv[0] to clatd to make ps output more useful
+    // 9. create a packet socket for clatd sending packets to the tunnel
+    // Will eventually be bound to htons(ETH_P_IPV6) protocol,
+    // but only after appropriate bpf filter is attached.
+    res = socket(AF_PACKET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (res < 0) {
+        res = errno;
+        ALOGE("packet socket failed: %s", strerror(errno));
+        return -res;
+    }
+    unique_fd tmpPacketSock(res);
+
+    // create a throwaway socket to reserve a file descriptor number
+    res = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (res == -1) {
+        res = errno;
+        ALOGE("socket(ipv6/udp) failed (%s) for packet socket", strerror(res));
+        return -res;
+    }
+    unique_fd passedPacketSock(res);
+
+    // this is the packet socket FD we'll pass to clatd on the cli, so need it as a string
+    char passedPacketSockStr[INT32_STRLEN];
+    snprintf(passedPacketSockStr, sizeof(passedPacketSock), "%d", passedPacketSock.get());
+
+    // 10. we're going to use this as argv[0] to clatd to make ps output more useful
     std::string progname("clatd-");
     progname += tracker.iface;
 
@@ -529,11 +553,12 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
                           "-4", tracker.v4Str,
                           "-6", tracker.v6Str,
                           "-t", passedTunFdStr,
+                          "-r", passedPacketSockStr,
                           "-w", passedRawSockStr,
                           nullptr};
     // clang-format on
 
-    // 10. register vfork requirement
+    // 11. register vfork requirement
     posix_spawnattr_t attr;
     res = posix_spawnattr_init(&attr);
     if (res) {
@@ -547,7 +572,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         return -res;
     }
 
-    // 11. register dup2() action: this is what 'clears' the CLOEXEC flag
+    // 12. register dup2() action: this is what 'clears' the CLOEXEC flag
     // on the tun fd that we want the child clatd process to inherit
     // (this will happen after the vfork, and before the execve)
     posix_spawn_file_actions_t fa;
@@ -562,23 +587,28 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         ALOGE("posix_spawn_file_actions_adddup2 tun fd failed (%s)", strerror(res));
         return -res;
     }
+    res = posix_spawn_file_actions_adddup2(&fa, tmpPacketSock, passedPacketSock);
+    if (res) {
+        ALOGE("posix_spawn_file_actions_adddup2 packet socket failed (%s)", strerror(res));
+        return -res;
+    }
     res = posix_spawn_file_actions_adddup2(&fa, tmpRawSock, passedRawSock);
     if (res) {
         ALOGE("posix_spawn_file_actions_adddup2 raw socket failed (%s)", strerror(res));
         return -res;
     }
 
-    // 12. add the drop rule for iptables.
+    // 13. add the drop rule for iptables.
     setIptablesDropRule(true, tracker.iface, tracker.pfx96String, tracker.v6Str);
 
-    // 13. actually perform vfork/dup2/execve
+    // 14. actually perform vfork/dup2/execve
     res = posix_spawn(&tracker.pid, kClatdPath, &fa, &attr, (char* const*)args, nullptr);
     if (res) {
         ALOGE("posix_spawn failed (%s)", strerror(res));
         return -res;
     }
 
-    // 14. configure eBPF offload - if possible
+    // 15. configure eBPF offload - if possible
     maybeStartBpf(tracker);
 
     mClatdTrackers[interface] = tracker;
