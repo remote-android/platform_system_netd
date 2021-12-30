@@ -74,6 +74,10 @@ class ClatdController {
                  const std::string& nat64Prefix);
     };
 
+    struct tun_data {
+        int read_fd6, write_fd6, fd4;
+    };
+
     std::mutex mutex;
 
     const NetworkController* mNetCtrl GUARDED_BY(mutex);
@@ -96,6 +100,9 @@ class ClatdController {
     void maybeStopBpf(const ClatdTracker& tracker) REQUIRES(mutex);
     void setIptablesDropRule(bool add, const char* iface, const char* pfx96Str, const char* v6Str)
             REQUIRES(mutex);
+
+    int configure_interface(struct ClatdTracker* tracker, struct tun_data* tunnel) REQUIRES(mutex);
+    int configure_tun_ip(const char* v4iface, const char* v4Str, int mtu) REQUIRES(mutex);
 
     // For testing.
     friend class ClatdControllerTest;

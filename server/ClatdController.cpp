@@ -34,6 +34,9 @@
 #include "ClatdController.h"
 #include "InterfaceController.h"
 
+#include <android/net/InterfaceConfigurationParcel.h>
+#include <netdutils/Status.h>
+
 #include "android-base/properties.h"
 #include "android-base/scopeguard.h"
 #include "android-base/stringprintf.h"
@@ -422,6 +425,56 @@ int ClatdController::ClatdTracker::init(unsigned networkId, const std::string& i
     return 0;
 }
 
+/* function: configure_tun_ip
+ * configures the ipv4 address on the tunnel interface
+ *   v4iface - tunnel interface name
+ *   v4Str   - tunnel ipv4 address
+ *   mtu     - mtu of tun device
+ * returns: 0 on success, errno on failure
+ */
+int ClatdController::configure_tun_ip(const char* v4iface, const char* v4Str, int mtu) {
+    ALOGI("Using IPv4 address %s on %s", v4Str, v4iface);
+
+    // Configure the interface before bringing it up. As soon as we bring the interface up, the
+    // framework will be notified and will assume the interface's configuration has been finalized.
+    std::string mtuStr = std::to_string(mtu);
+    if (int res = InterfaceController::setMtu(v4iface, mtuStr.c_str())) {
+        ALOGE("setMtu %s failed (%s)", v4iface, strerror(res));
+        return res;
+    }
+
+    InterfaceConfigurationParcel ifConfig;
+    ifConfig.ifName = std::string(v4iface);
+    ifConfig.ipv4Addr = std::string(v4Str);
+    ifConfig.prefixLength = 32;
+    ifConfig.hwAddr = std::string("");
+    ifConfig.flags = std::vector<std::string>{std::string(String8(INetd::IF_STATE_UP().string()))};
+    const auto& status = InterfaceController::setCfg(ifConfig);
+    if (!status.ok()) {
+        ALOGE("configure_tun_ip/setCfg failed: %s", strerror(-status.code()));
+        return -status.code();
+    }
+
+    return 0;
+}
+
+/* function: configure_interface
+ * reads the configuration and applies it to the interface
+ *   tracker - clat tracker
+ *   tunnel - tun device data
+ * returns: 0 on success, errno on failure
+ */
+int ClatdController::configure_interface(struct ClatdTracker* tracker,
+                                         struct tun_data* /*tunnel*/) {
+    int mtu = 1280;  // TODO: detect MTU
+    ALOGI("ipv4 mtu is %d", mtu);
+
+    if (int ret = configure_tun_ip(tracker->v4iface, tracker->v4Str, mtu)) return ret;
+
+    // TODO: picks the clat IPv6 address and configures packet translation to use it.
+    return 0;
+}
+
 int ClatdController::startClatd(const std::string& interface, const std::string& nat64Prefix,
                                 std::string* v6Str) {
     std::lock_guard guard(mutex);
@@ -541,7 +594,15 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
     char passedPacketSockStr[INT32_STRLEN];
     snprintf(passedPacketSockStr, sizeof(passedPacketSock), "%d", passedPacketSock.get());
 
-    // 10. we're going to use this as argv[0] to clatd to make ps output more useful
+    // 10. configure tun and clat interface
+    struct tun_data tunnel = {.fd4 = tmpTunFd, .read_fd6 = tmpPacketSock, .write_fd6 = tmpRawSock};
+    res = configure_interface(&tracker, &tunnel);
+    if (res) {
+        ALOGE("configure interface failed: %s", strerror(res));
+        return -res;
+    }
+
+    // 11. we're going to use this as argv[0] to clatd to make ps output more useful
     std::string progname("clatd-");
     progname += tracker.iface;
 
@@ -558,7 +619,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
                           nullptr};
     // clang-format on
 
-    // 11. register vfork requirement
+    // 12. register vfork requirement
     posix_spawnattr_t attr;
     res = posix_spawnattr_init(&attr);
     if (res) {
@@ -572,7 +633,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         return -res;
     }
 
-    // 12. register dup2() action: this is what 'clears' the CLOEXEC flag
+    // 13. register dup2() action: this is what 'clears' the CLOEXEC flag
     // on the tun fd that we want the child clatd process to inherit
     // (this will happen after the vfork, and before the execve)
     posix_spawn_file_actions_t fa;
@@ -598,17 +659,17 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         return -res;
     }
 
-    // 13. add the drop rule for iptables.
+    // 14. add the drop rule for iptables.
     setIptablesDropRule(true, tracker.iface, tracker.pfx96String, tracker.v6Str);
 
-    // 14. actually perform vfork/dup2/execve
+    // 15. actually perform vfork/dup2/execve
     res = posix_spawn(&tracker.pid, kClatdPath, &fa, &attr, (char* const*)args, nullptr);
     if (res) {
         ALOGE("posix_spawn failed (%s)", strerror(res));
         return -res;
     }
 
-    // 15. configure eBPF offload - if possible
+    // 16. configure eBPF offload - if possible
     maybeStartBpf(tracker);
 
     mClatdTrackers[interface] = tracker;
