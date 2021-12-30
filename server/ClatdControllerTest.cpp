@@ -85,6 +85,9 @@ class ClatdControllerTest : public IptablesBaseTest {
     void makeChecksumNeutral(in6_addr* a, const in_addr b, const in6_addr& c) {
         ClatdController::makeChecksumNeutral(a, b, c);
     }
+    int detect_mtu(const struct in6_addr* a, uint32_t b, uint32_t c) {
+        return mClatdCtrl.detect_mtu(a, b, c);
+    }
 };
 
 TEST_F(ClatdControllerTest, SelectIpv4Address) {
@@ -202,6 +205,11 @@ TEST_F(ClatdControllerTest, RemoveIptablesRule) {
              "*raw\n"
              "-D clat_raw_PREROUTING -i wlan0 -s 64:ff9b::/96 -d 2001:db8::a:b:c:d -j DROP\n"
              "COMMIT\n"}});
+}
+
+TEST_F(ClatdControllerTest, DetectMtu) {
+    // ::1 with bottom 32 bits set to 1 is still ::1 which routes via lo with mtu of 64KiB
+    ASSERT_EQ(detect_mtu(&in6addr_loopback, htonl(1), 0 /*MARK_UNSET*/), 65536);
 }
 
 }  // namespace net
