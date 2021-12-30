@@ -56,9 +56,11 @@ extern "C" {
 #include "TcUtils.h"
 #include "netid_client.h"
 
-// Sync from external/android-clat/clatd.h
+// Sync from external/android-clat/clatd.{c, h}
 #define MAXMTU 65536
 #define PACKETLEN (MAXMTU + sizeof(struct tun_pi))
+/* 40 bytes IPv6 header - 20 bytes IPv4 header + 8 bytes fragment header */
+#define MTU_DELTA 28
 
 static const char* kClatdPath = "/system/bin/clatd";
 
@@ -559,6 +561,54 @@ int ClatdController::configure_clat_ipv6_address(struct ClatdTracker* tracker,
     return 0;
 }
 
+/* function: detect mtu
+ * returns: mtu on success, -errno on failure
+ */
+int ClatdController::detect_mtu(const struct in6_addr* plat_subnet, uint32_t plat_suffix,
+                                uint32_t mark) {
+    // Create an IPv6 UDP socket.
+    unique_fd s(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    if (s < 0) {
+        int ret = errno;
+        ALOGE("socket(AF_INET6, SOCK_DGRAM, 0) failed: %s", strerror(errno));
+        return -ret;
+    }
+
+    // Socket's mark affects routing decisions (network selection)
+    if ((mark != MARK_UNSET) && setsockopt(s, SOL_SOCKET, SO_MARK, &mark, sizeof(mark))) {
+        int ret = errno;
+        ALOGE("setsockopt(SOL_SOCKET, SO_MARK) failed: %s", strerror(errno));
+        return -ret;
+    }
+
+    // Try to connect udp socket to plat_subnet(96 bits):plat_suffix(32 bits)
+    struct sockaddr_in6 dst = {
+            .sin6_family = AF_INET6,
+            .sin6_addr = *plat_subnet,
+    };
+    dst.sin6_addr.s6_addr32[3] = plat_suffix;
+    if (connect(s, (struct sockaddr*)&dst, sizeof(dst))) {
+        int ret = errno;
+        ALOGE("connect() failed: %s", strerror(errno));
+        return -ret;
+    }
+
+    // Fetch the socket's IPv6 mtu - this is effectively fetching mtu from routing table
+    int mtu;
+    socklen_t sz_mtu = sizeof(mtu);
+    if (getsockopt(s, SOL_IPV6, IPV6_MTU, &mtu, &sz_mtu)) {
+        int ret = errno;
+        ALOGE("getsockopt(SOL_IPV6, IPV6_MTU) failed: %s", strerror(errno));
+        return -ret;
+    }
+    if (sz_mtu != sizeof(mtu)) {
+        ALOGE("getsockopt(SOL_IPV6, IPV6_MTU) returned unexpected size: %d", sz_mtu);
+        return -EFAULT;
+    }
+
+    return mtu;
+}
+
 /* function: configure_interface
  * reads the configuration and applies it to the interface
  *   tracker - clat tracker
@@ -566,7 +616,16 @@ int ClatdController::configure_clat_ipv6_address(struct ClatdTracker* tracker,
  * returns: 0 on success, errno on failure
  */
 int ClatdController::configure_interface(struct ClatdTracker* tracker, struct tun_data* tunnel) {
-    int mtu = 1280;  // TODO: detect MTU
+    int res = detect_mtu(&tracker->pfx96, htonl(0x08080808), tracker->fwmark.intValue);
+    if (res < 0) return -res;
+
+    int mtu = res;
+    // clamp to minimum ipv6 mtu - this probably cannot ever trigger
+    if (mtu < 1280) mtu = 1280;
+    // clamp to buffer size
+    if (mtu > MAXMTU) mtu = MAXMTU;
+    // decrease by ipv6(40) + ipv6 fragmentation header(8) vs ipv4(20) overhead of 28 bytes
+    mtu -= MTU_DELTA;
     ALOGI("ipv4 mtu is %d", mtu);
 
     if (int ret = configure_tun_ip(tracker->v4iface, tracker->v4Str, mtu)) return ret;
