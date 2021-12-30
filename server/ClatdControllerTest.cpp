@@ -41,6 +41,7 @@ namespace android {
 namespace net {
 
 using android::base::StringPrintf;
+using android::net::TunInterface;
 
 // Mock functions for isIpv4AddressFree.
 bool neverFree(in_addr_t /* addr */) {
@@ -87,6 +88,10 @@ class ClatdControllerTest : public IptablesBaseTest {
     }
     int detect_mtu(const struct in6_addr* a, uint32_t b, uint32_t c) {
         return mClatdCtrl.detect_mtu(a, b, c);
+    }
+    int configure_tun_ip(const char* a, const char* b, int c) {
+        std::lock_guard guard(mClatdCtrl.mutex);
+        return mClatdCtrl.configure_tun_ip(a, b, c);
     }
 };
 
@@ -210,6 +215,44 @@ TEST_F(ClatdControllerTest, RemoveIptablesRule) {
 TEST_F(ClatdControllerTest, DetectMtu) {
     // ::1 with bottom 32 bits set to 1 is still ::1 which routes via lo with mtu of 64KiB
     ASSERT_EQ(detect_mtu(&in6addr_loopback, htonl(1), 0 /*MARK_UNSET*/), 65536);
+}
+
+// Get the first IPv4 address for a given interface name
+in_addr* getinterface_ip(const char* interface) {
+    ifaddrs *ifaddr, *ifa;
+    in_addr* retval = nullptr;
+
+    if (getifaddrs(&ifaddr) == -1) return nullptr;
+
+    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == nullptr) continue;
+
+        if ((strcmp(ifa->ifa_name, interface) == 0) && (ifa->ifa_addr->sa_family == AF_INET)) {
+            retval = (in_addr*)malloc(sizeof(in_addr));
+            if (retval) {
+                const sockaddr_in* sin = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
+                *retval = sin->sin_addr;
+            }
+            break;
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return retval;
+}
+
+TEST_F(ClatdControllerTest, ConfigureTunIpManual) {
+    // Create an interface for configure_tun_ip to configure and bring up.
+    TunInterface v4Iface;
+    ASSERT_EQ(0, v4Iface.init());
+
+    configure_tun_ip(v4Iface.name().c_str(), "192.0.2.1" /* v4Str */, 1472 /* mtu */);
+    in_addr* ip = getinterface_ip(v4Iface.name().c_str());
+    ASSERT_NE(nullptr, ip);
+    EXPECT_EQ(inet_addr("192.0.2.1"), ip->s_addr);
+    free(ip);
+
+    v4Iface.destroy();
 }
 
 }  // namespace net
