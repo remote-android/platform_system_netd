@@ -101,6 +101,7 @@ class ClatdController {
     void setIptablesDropRule(bool add, const char* iface, const char* pfx96Str, const char* v6Str)
             REQUIRES(mutex);
 
+    int detect_mtu(const struct in6_addr* plat_subnet, uint32_t plat_suffix, uint32_t mark);
     int configure_interface(struct ClatdTracker* tracker, struct tun_data* tunnel) REQUIRES(mutex);
     int configure_tun_ip(const char* v4iface, const char* v4Str, int mtu) REQUIRES(mutex);
     int configure_clat_ipv6_address(struct ClatdTracker* tracker, struct tun_data* tunnel)
