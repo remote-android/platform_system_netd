@@ -19,6 +19,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <linux/if_packet.h>
 #include <linux/if_tun.h>
 #include <linux/ioctl.h>
 #include <net/if.h>
@@ -54,6 +55,10 @@ extern "C" {
 #include "NetworkController.h"
 #include "TcUtils.h"
 #include "netid_client.h"
+
+// Sync from external/android-clat/clatd.h
+#define MAXMTU 65536
+#define PACKETLEN (MAXMTU + sizeof(struct tun_pi))
 
 static const char* kClatdPath = "/system/bin/clatd";
 
@@ -458,20 +463,115 @@ int ClatdController::configure_tun_ip(const char* v4iface, const char* v4Str, in
     return 0;
 }
 
+/* function: add_anycast_address
+ * adds an anycast IPv6 address to an interface, returns 0 on success and <0 on failure
+ *   sock      - the socket to add the address to
+ *   addr      - the IP address to add
+ *   ifindex   - index of interface to add the address to
+ * returns: 0 on success, errno on failure
+ */
+int ClatdController::add_anycast_address(int sock, struct in6_addr* addr, int ifindex) {
+    struct ipv6_mreq mreq = {*addr, ifindex};
+    int ret = setsockopt(sock, SOL_IPV6, IPV6_JOIN_ANYCAST, &mreq, sizeof(mreq));
+    if (ret) {
+        ret = errno;
+        ALOGE("setsockopt(IPV6_JOIN_ANYCAST): %s", strerror(errno));
+        return ret;
+    }
+
+    return 0;
+}
+
+/* function: configure_packet_socket
+ * Binds the packet socket and attaches the receive filter to it.
+ *   sock    - the socket to configure
+ *   addr    - the IP address to filter
+ *   ifindex - index of interface to add the filter to
+ * returns: 0 on success, errno on failure
+ */
+int ClatdController::configure_packet_socket(int sock, in6_addr* addr, int ifindex) {
+    uint32_t* ipv6 = addr->s6_addr32;
+
+    // clang-format off
+    struct sock_filter filter_code[] = {
+    // Load the first four bytes of the IPv6 destination address (starts 24 bytes in).
+    // Compare it against the first four bytes of our IPv6 address, in host byte order (BPF loads
+    // are always in host byte order). If it matches, continue with next instruction (JMP 0). If it
+    // doesn't match, jump ahead to statement that returns 0 (ignore packet). Repeat for the other
+    // three words of the IPv6 address, and if they all match, return PACKETLEN (accept packet).
+        BPF_STMT(BPF_LD  | BPF_W   | BPF_ABS,  24),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,    htonl(ipv6[0]), 0, 7),
+        BPF_STMT(BPF_LD  | BPF_W   | BPF_ABS,  28),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,    htonl(ipv6[1]), 0, 5),
+        BPF_STMT(BPF_LD  | BPF_W   | BPF_ABS,  32),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,    htonl(ipv6[2]), 0, 3),
+        BPF_STMT(BPF_LD  | BPF_W   | BPF_ABS,  36),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,    htonl(ipv6[3]), 0, 1),
+        BPF_STMT(BPF_RET | BPF_K,              PACKETLEN),
+        BPF_STMT(BPF_RET | BPF_K,              0),
+    };
+    // clang-format on
+    struct sock_fprog filter = {sizeof(filter_code) / sizeof(filter_code[0]), filter_code};
+
+    if (setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &filter, sizeof(filter))) {
+        int res = errno;
+        ALOGE("attach packet filter failed: %s", strerror(errno));
+        return res;
+    }
+
+    struct sockaddr_ll sll = {
+            .sll_family = AF_PACKET,
+            .sll_protocol = htons(ETH_P_IPV6),
+            .sll_ifindex = ifindex,
+            .sll_pkttype =
+                    PACKET_OTHERHOST,  // The 464xlat IPv6 address is not assigned to the kernel.
+    };
+    if (bind(sock, (struct sockaddr*)&sll, sizeof(sll))) {
+        int res = errno;
+        ALOGE("binding packet socket: %s", strerror(errno));
+        return res;
+    }
+
+    return 0;
+}
+
+/* function: configure_clat_ipv6_address
+ * picks the clat IPv6 address and configures packet translation to use it.
+ *   tunnel - tun device data
+ *   interface - uplink interface name
+ * returns: 0 on success, errno on failure
+ */
+int ClatdController::configure_clat_ipv6_address(struct ClatdTracker* tracker,
+                                                 struct tun_data* tunnel) {
+    ALOGI("Using IPv6 address %s on %s", tracker->v6Str, tracker->iface);
+
+    // Start translating packets to the new prefix.
+    // TODO: return if error?
+    add_anycast_address(tunnel->write_fd6, &tracker->v6, tracker->ifIndex);
+
+    // Update our packet socket filter to reflect the new 464xlat IP address.
+    if (int res = configure_packet_socket(tunnel->read_fd6, &tracker->v6, tracker->ifIndex)) {
+        // Things aren't going to work. Bail out and hope we have better luck next time.
+        // We don't log an error here because configure_packet_socket has already done so.
+        return res;
+    }
+
+    return 0;
+}
+
 /* function: configure_interface
  * reads the configuration and applies it to the interface
  *   tracker - clat tracker
  *   tunnel - tun device data
  * returns: 0 on success, errno on failure
  */
-int ClatdController::configure_interface(struct ClatdTracker* tracker,
-                                         struct tun_data* /*tunnel*/) {
+int ClatdController::configure_interface(struct ClatdTracker* tracker, struct tun_data* tunnel) {
     int mtu = 1280;  // TODO: detect MTU
     ALOGI("ipv4 mtu is %d", mtu);
 
     if (int ret = configure_tun_ip(tracker->v4iface, tracker->v4Str, mtu)) return ret;
+    if (int ret = configure_clat_ipv6_address(tracker, tunnel)) return ret;
 
-    // TODO: picks the clat IPv6 address and configures packet translation to use it.
     return 0;
 }
 
