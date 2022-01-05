@@ -768,7 +768,6 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
     // clang-format off
     const char* args[] = {progname.c_str(),
                           "-i", tracker.iface,
-                          "-m", tracker.fwmarkString,
                           "-p", tracker.pfx96String,
                           "-4", tracker.v4Str,
                           "-6", tracker.v6Str,
