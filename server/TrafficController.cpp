@@ -49,7 +49,6 @@
 
 #include "NetlinkListener.h"
 #include "netdutils/DumpWriter.h"
-#include "qtaguid/qtaguid.h"
 
 namespace android {
 namespace net {

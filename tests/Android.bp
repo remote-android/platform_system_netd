@@ -106,7 +106,6 @@ cc_test {
         "libnetd_test_utils",
         "libnetdbpf",
         "libnetdutils",
-        "libqtaguid",
         "netd_aidl_interface-V7-cpp",
         "netd_event_listener_interface-V1-cpp",
         "oemnetd_aidl_interface-cpp",
