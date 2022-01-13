@@ -48,23 +48,25 @@
 #define TCP_FLAG_OFF 13
 #define RST_OFFSET 2
 
-DEFINE_BPF_MAP_GRO(cookie_tag_map, HASH, uint64_t, UidTagValue, COOKIE_UID_MAP_SIZE,
+DEFINE_BPF_MAP_GRW(cookie_tag_map, HASH, uint64_t, UidTagValue, COOKIE_UID_MAP_SIZE,
                    AID_NET_BW_ACCT)
-DEFINE_BPF_MAP_GRO(uid_counterset_map, HASH, uint32_t, uint8_t, UID_COUNTERSET_MAP_SIZE,
+DEFINE_BPF_MAP_GRW(uid_counterset_map, HASH, uint32_t, uint8_t, UID_COUNTERSET_MAP_SIZE,
                    AID_NET_BW_ACCT)
-DEFINE_BPF_MAP_GRO(app_uid_stats_map, HASH, uint32_t, StatsValue, APP_STATS_MAP_SIZE,
-                   AID_NET_BW_STATS)
-DEFINE_BPF_MAP_GRW(stats_map_A, HASH, StatsKey, StatsValue, STATS_MAP_SIZE, AID_NET_BW_STATS)
-DEFINE_BPF_MAP_GRW(stats_map_B, HASH, StatsKey, StatsValue, STATS_MAP_SIZE, AID_NET_BW_STATS)
-DEFINE_BPF_MAP_GRO(iface_stats_map, HASH, uint32_t, StatsValue, IFACE_STATS_MAP_SIZE,
-                   AID_NET_BW_STATS)
-DEFINE_BPF_MAP_GRO(configuration_map, HASH, uint32_t, uint8_t, CONFIGURATION_MAP_SIZE,
-                   AID_NET_BW_STATS)
-DEFINE_BPF_MAP(uid_owner_map, HASH, uint32_t, UidOwnerValue, UID_OWNER_MAP_SIZE)
+DEFINE_BPF_MAP_GRW(app_uid_stats_map, HASH, uint32_t, StatsValue, APP_STATS_MAP_SIZE,
+                   AID_NET_BW_ACCT)
+DEFINE_BPF_MAP_GRW(stats_map_A, HASH, StatsKey, StatsValue, STATS_MAP_SIZE, AID_NET_BW_ACCT)
+DEFINE_BPF_MAP_GRW(stats_map_B, HASH, StatsKey, StatsValue, STATS_MAP_SIZE, AID_NET_BW_ACCT)
+DEFINE_BPF_MAP_GRW(iface_stats_map, HASH, uint32_t, StatsValue, IFACE_STATS_MAP_SIZE,
+                   AID_NET_BW_ACCT)
+DEFINE_BPF_MAP_GRW(configuration_map, HASH, uint32_t, uint8_t, CONFIGURATION_MAP_SIZE,
+                   AID_NET_BW_ACCT)
+DEFINE_BPF_MAP_GRW(uid_owner_map, HASH, uint32_t, UidOwnerValue, UID_OWNER_MAP_SIZE,
+                   AID_NET_BW_ACCT)
+DEFINE_BPF_MAP_GRW(uid_permission_map, HASH, uint32_t, uint8_t, UID_OWNER_MAP_SIZE, AID_NET_BW_ACCT)
 
 /* never actually used from ebpf */
-DEFINE_BPF_MAP_GRO(iface_index_name_map, HASH, uint32_t, IfaceValue, IFACE_INDEX_NAME_MAP_SIZE,
-                   AID_NET_BW_STATS)
+DEFINE_BPF_MAP_GRW(iface_index_name_map, HASH, uint32_t, IfaceValue, IFACE_INDEX_NAME_MAP_SIZE,
+                   AID_NET_BW_ACCT)
 
 static __always_inline int is_system_uid(uint32_t uid) {
     return (uid <= MAX_SYSTEM_UID) && (uid >= MIN_SYSTEM_UID);
@@ -364,8 +366,6 @@ DEFINE_BPF_PROG("skfilter/denylist/xtbpf", AID_ROOT, AID_NET_ADMIN, xt_bpf_denyl
     if (denylistMatch) return denylistMatch->rule & PENALTY_BOX_MATCH ? BPF_MATCH : BPF_NOMATCH;
     return BPF_NOMATCH;
 }
-
-DEFINE_BPF_MAP(uid_permission_map, HASH, uint32_t, uint8_t, UID_OWNER_MAP_SIZE)
 
 DEFINE_BPF_PROG_KVER("cgroupsock/inet/create", AID_ROOT, AID_ROOT, inet_socket_create,
                      KVER(4, 14, 0))
