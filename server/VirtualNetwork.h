@@ -28,10 +28,12 @@ namespace android::net {
 // Only a few privileged UIDs may skip the VPN and go directly to the underlying physical network.
 //
 // A non-secure VPN ("bypassable" VPN) also grabs all user traffic by default. But all apps are
-// permitted to skip it and pick any other network for their connections.
+// permitted to skip it and pick any other network for their connections. A bypassable VPN may
+// optionally exclude local routes, which means it will not grab traffic that is destined to IP
+// addresses considered to be on the local link.
 class VirtualNetwork : public Network {
 public:
-  explicit VirtualNetwork(unsigned netId, bool secure, bool mExcludeLocalRoutes = false);
+  explicit VirtualNetwork(unsigned netId, bool secure, bool excludeLocalRoutes = false);
   virtual ~VirtualNetwork();
   [[nodiscard]] int addUsers(const UidRanges& uidRanges, int32_t subPriority) override;
   [[nodiscard]] int removeUsers(const UidRanges& uidRanges, int32_t subPriority) override;
