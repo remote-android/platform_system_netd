@@ -107,7 +107,8 @@ public:
 
     [[nodiscard]] int createPhysicalNetwork(unsigned netId, Permission permission);
     [[nodiscard]] int createPhysicalOemNetwork(Permission permission, unsigned* netId);
-    [[nodiscard]] int createVirtualNetwork(unsigned netId, bool secure, NativeVpnType vpnType);
+    [[nodiscard]] int createVirtualNetwork(unsigned netId, bool secure, NativeVpnType vpnType,
+                                           bool excludeLocalRoutes);
     [[nodiscard]] int destroyNetwork(unsigned netId);
 
     [[nodiscard]] int addInterfaceToNetwork(unsigned netId, const char* interface);
