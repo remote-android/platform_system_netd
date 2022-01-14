@@ -64,7 +64,7 @@ public:
     virtual void removeFromUidRangeMap(const UidRanges& uidRanges, int32_t subPriority);
 
 protected:
-    explicit Network(unsigned netId, bool mSecure = false);
+    explicit Network(unsigned netId, bool secure = false);
     bool canAddUidRanges(const UidRanges& uidRanges, int32_t subPriority) const;
 
     const unsigned mNetId;
