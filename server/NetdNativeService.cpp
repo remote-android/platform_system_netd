@@ -394,7 +394,8 @@ binder::Status NetdNativeService::networkCreateVpn(int32_t netId, bool secure) {
     // The value of vpnType does not matter here, because it is not used in AOSP and is only
     // implemented by OEMs. Also, the RPC is going to deprecate. Just pick a value defined in INetd
     // as default.
-    int ret = gCtls->netCtrl.createVirtualNetwork(netId, secure, NativeVpnType::LEGACY);
+    int ret = gCtls->netCtrl.createVirtualNetwork(netId, secure, NativeVpnType::LEGACY,
+                                                  false /* excludeLocalRoutes */);
     return statusFromErrcode(ret);
 }
 
@@ -405,7 +406,8 @@ binder::Status NetdNativeService::networkCreate(const NativeNetworkConfig& confi
         ret = gCtls->netCtrl.createPhysicalNetwork(config.netId,
                                                    convertPermission(config.permission));
     } else if (config.networkType == NativeNetworkType::VIRTUAL) {
-        ret = gCtls->netCtrl.createVirtualNetwork(config.netId, config.secure, config.vpnType);
+        ret = gCtls->netCtrl.createVirtualNetwork(config.netId, config.secure, config.vpnType,
+                                                  config.excludeLocalRoutes);
     }
     return statusFromErrcode(ret);
 }
