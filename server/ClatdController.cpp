@@ -62,7 +62,7 @@ extern "C" {
 /* 40 bytes IPv6 header - 20 bytes IPv4 header + 8 bytes fragment header */
 #define MTU_DELTA 28
 
-static const char* kClatdPath = "/system/bin/clatd";
+static const char* kClatdPath = "/apex/com.android.tethering/bin/for-system/clatd";
 
 // For historical reasons, start with 192.0.0.4, and after that, use all subsequent addresses in
 // 192.0.0.0/29 (RFC 7335).
