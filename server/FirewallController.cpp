@@ -166,10 +166,5 @@ std::string FirewallController::makeCriticalCommands(IptablesTarget target, cons
     return commands;
 }
 
-int FirewallController::replaceUidChain(const std::string& name, bool isAllowlist,
-                                        const std::vector<int32_t>& uids) {
-    return gCtls->trafficCtrl.replaceUidOwnerMap(name, isAllowlist, uids);
-}
-
 }  // namespace net
 }  // namespace android
