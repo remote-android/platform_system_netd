@@ -439,7 +439,8 @@ int NetworkController::createPhysicalOemNetwork(Permission permission, unsigned 
     return ret;
 }
 
-int NetworkController::createVirtualNetwork(unsigned netId, bool secure, NativeVpnType vpnType) {
+int NetworkController::createVirtualNetwork(unsigned netId, bool secure, NativeVpnType vpnType,
+                                            bool excludeLocalRoutes) {
     ScopedWLock lock(mRWLock);
 
     if (!(MIN_NET_ID <= netId && netId <= MAX_NET_ID)) {
@@ -460,7 +461,7 @@ int NetworkController::createVirtualNetwork(unsigned netId, bool secure, NativeV
     if (int ret = modifyFallthroughLocked(netId, true)) {
         return ret;
     }
-    mNetworks[netId] = new VirtualNetwork(netId, secure);
+    mNetworks[netId] = new VirtualNetwork(netId, secure, excludeLocalRoutes);
     return 0;
 }
 
