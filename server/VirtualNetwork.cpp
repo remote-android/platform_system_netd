@@ -27,7 +27,8 @@
 namespace android {
 namespace net {
 
-VirtualNetwork::VirtualNetwork(unsigned netId, bool secure) : Network(netId, secure) {}
+VirtualNetwork::VirtualNetwork(unsigned netId, bool secure, bool excludeLocalRoutes)
+    : Network(netId, secure), mExcludeLocalRoutes(excludeLocalRoutes) {}
 
 VirtualNetwork::~VirtualNetwork() {}
 
