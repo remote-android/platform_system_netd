@@ -1856,12 +1856,18 @@ void expectNetworkRouteExists(const char* ipVersion, const std::string& ifName,
     expectNetworkRouteExistsWithMtu(ipVersion, ifName, dst, nextHop, "", table);
 }
 
+void expectNetworkRouteDoesNotExistWithMtu(const char* ipVersion, const std::string& ifName,
+                                           const std::string& dst, const std::string& nextHop,
+                                           const std::string& mtu, const char* table) {
+    std::vector<std::string> routeSubstrings = ipRouteSubstrings(ifName, dst, nextHop, mtu);
+    EXPECT_FALSE(ipRouteExists(ipVersion, table, routeSubstrings))
+            << "Found unexpected route [" << Join(routeSubstrings, ", ") << "] in table " << table;
+}
+
 void expectNetworkRouteDoesNotExist(const char* ipVersion, const std::string& ifName,
                                     const std::string& dst, const std::string& nextHop,
                                     const char* table) {
-    std::vector<std::string> routeSubstrings = ipRouteSubstrings(ifName, dst, nextHop, "");
-    EXPECT_FALSE(ipRouteExists(ipVersion, table, routeSubstrings))
-            << "Found unexpected route [" << Join(routeSubstrings, ", ") << "] in table " << table;
+    expectNetworkRouteDoesNotExistWithMtu(ipVersion, ifName, dst, nextHop, "", table);
 }
 
 bool ipRuleExists(const char* ipVersion, const std::string& ipRule) {
@@ -2108,6 +2114,12 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
         }
     }
 
+    /*
+     * Test networkUpdateRouteParcel behavior in case of route MTU change.
+     *
+     * Change of route MTU should be treated as an update of the route:
+     * - networkUpdateRouteParcel should succeed and update route MTU.
+     */
     for (size_t i = 0; i < std::size(kTestData); i++) {
         const auto& td = kTestData[i];
         int mtu = (i % 2) ? 1480 : 1280;
@@ -2148,6 +2160,61 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
             EXPECT_NE(0, status.serviceSpecificErrorCode());
         }
     }
+
+    /*
+     * Test network[Update|Add]RouteParcel behavior in case of route type change.
+     *
+     * Change of route type should be treated as an update of the route:
+     * - networkUpdateRouteParcel should succeed and update route type.
+     * - networkAddRouteParcel should silently fail, because the route already exists. Route type
+     *   should not be changed in this case.
+     */
+    for (size_t i = 0; i < std::size(kTestData); i++) {
+        const auto& td = kTestData[i];
+
+        if (!td.expectSuccess) {
+            continue;
+        }
+
+        android::net::RouteInfoParcel parcel;
+        parcel.ifName = sTun.name();
+        parcel.destination = td.testDest;
+        parcel.nextHop = td.testNextHop;
+        parcel.mtu = 1280;
+        binder::Status status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectNetworkRouteExistsWithMtu(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                        std::to_string(parcel.mtu), sTun.name().c_str());
+
+        parcel.nextHop = parcel.nextHop == "throw" ? "unreachable" : "throw";
+        const char* oldNextHop = td.testNextHop;
+        const char* newNextHop = parcel.nextHop.c_str();
+
+        // Trying to add same route with changed type, this should silently fail.
+        status = mNetd->networkAddRouteParcel(TEST_NETID1, parcel);
+        // No error reported.
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        // Old route still exists.
+        expectNetworkRouteExistsWithMtu(td.ipVersion, sTun.name(), td.testDest, oldNextHop,
+                                        std::to_string(parcel.mtu), sTun.name().c_str());
+        // New route was not actually added.
+        expectNetworkRouteDoesNotExistWithMtu(td.ipVersion, sTun.name(), td.testDest, newNextHop,
+                                              std::to_string(parcel.mtu), sTun.name().c_str());
+
+        // Update should succeed.
+        status = mNetd->networkUpdateRouteParcel(TEST_NETID1, parcel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectNetworkRouteExistsWithMtu(td.ipVersion, sTun.name(), td.testDest, newNextHop,
+                                        std::to_string(parcel.mtu), sTun.name().c_str());
+        expectNetworkRouteDoesNotExistWithMtu(td.ipVersion, sTun.name(), td.testDest, oldNextHop,
+                                              std::to_string(parcel.mtu), sTun.name().c_str());
+
+        status = mNetd->networkRemoveRouteParcel(TEST_NETID1, parcel);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectNetworkRouteDoesNotExistWithMtu(td.ipVersion, sTun.name(), td.testDest, newNextHop,
+                                              std::to_string(parcel.mtu), sTun.name().c_str());
+    }
+
     // Remove test physical network
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
 }
