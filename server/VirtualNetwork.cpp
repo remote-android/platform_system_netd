@@ -39,7 +39,8 @@ int VirtualNetwork::addUsers(const UidRanges& uidRanges, int32_t subPriority) {
 
     for (const std::string& interface : mInterfaces) {
         int ret = RouteController::addUsersToVirtualNetwork(mNetId, interface.c_str(), mSecure,
-                                                            {{subPriority, uidRanges}});
+                                                            {{subPriority, uidRanges}},
+                                                            mExcludeLocalRoutes);
         if (ret) {
             ALOGE("failed to add users on interface %s of netId %u", interface.c_str(), mNetId);
             return ret;
@@ -54,7 +55,8 @@ int VirtualNetwork::removeUsers(const UidRanges& uidRanges, int32_t subPriority)
 
     for (const std::string& interface : mInterfaces) {
         int ret = RouteController::removeUsersFromVirtualNetwork(mNetId, interface.c_str(), mSecure,
-                                                                 {{subPriority, uidRanges}});
+                                                                 {{subPriority, uidRanges}},
+                                                                 mExcludeLocalRoutes);
         if (ret) {
             ALOGE("failed to remove users on interface %s of netId %u", interface.c_str(), mNetId);
             return ret;
@@ -68,8 +70,8 @@ int VirtualNetwork::addInterface(const std::string& interface) {
     if (hasInterface(interface)) {
         return 0;
     }
-    if (int ret = RouteController::addInterfaceToVirtualNetwork(mNetId, interface.c_str(), mSecure,
-                                                                mUidRangeMap)) {
+    if (int ret = RouteController::addInterfaceToVirtualNetwork(
+                mNetId, interface.c_str(), mSecure, mUidRangeMap, mExcludeLocalRoutes)) {
         ALOGE("failed to add interface %s to VPN netId %u", interface.c_str(), mNetId);
         return ret;
     }
@@ -81,8 +83,8 @@ int VirtualNetwork::removeInterface(const std::string& interface) {
     if (!hasInterface(interface)) {
         return 0;
     }
-    if (int ret = RouteController::removeInterfaceFromVirtualNetwork(mNetId, interface.c_str(),
-                                                                     mSecure, mUidRangeMap)) {
+    if (int ret = RouteController::removeInterfaceFromVirtualNetwork(
+                mNetId, interface.c_str(), mSecure, mUidRangeMap, mExcludeLocalRoutes)) {
         ALOGE("failed to remove interface %s from VPN netId %u", interface.c_str(), mNetId);
         return ret;
     }
