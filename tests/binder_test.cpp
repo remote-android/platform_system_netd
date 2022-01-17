@@ -110,7 +110,8 @@ using android::net::MarkMaskParcel;
 using android::net::NativeNetworkConfig;
 using android::net::NativeNetworkType;
 using android::net::NativeVpnType;
-using android::net::RULE_PRIORITY_BYPASSABLE_VPN;
+using android::net::RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION;
+using android::net::RULE_PRIORITY_BYPASSABLE_VPN_NO_LOCAL_EXCLUSION;
 using android::net::RULE_PRIORITY_DEFAULT_NETWORK;
 using android::net::RULE_PRIORITY_EXPLICIT_NETWORK;
 using android::net::RULE_PRIORITY_OUTPUT_INTERFACE;
@@ -229,7 +230,6 @@ class NetdBinderTest : public ::testing::Test {
                                               int vpnNetId, bool secure,
                                               std::vector<UidRangeParcel>&& appDefaultUidRanges,
                                               std::vector<UidRangeParcel>&& vpnUidRanges);
-
   protected:
     // Use -1 to represent that default network was not modified because
     // real netId must be an unsigned value.
@@ -4153,7 +4153,7 @@ void verifyAppUidRules(std::vector<bool>&& expectedResults, NativeUidRangeConfig
 }
 
 void verifyVpnUidRules(std::vector<bool>&& expectedResults, NativeUidRangeConfig& uidRangeConfig,
-                       const std::string& iface, bool secure) {
+                       const std::string& iface, bool secure, bool excludeLocalRoutes) {
     ASSERT_EQ(expectedResults.size(), uidRangeConfig.uidRanges.size());
     std::string action = StringPrintf("lookup %s ", iface.c_str());
 
@@ -4161,7 +4161,9 @@ void verifyVpnUidRules(std::vector<bool>&& expectedResults, NativeUidRangeConfig
     if (secure) {
         priority = RULE_PRIORITY_SECURE_VPN;
     } else {
-        priority = RULE_PRIORITY_BYPASSABLE_VPN;
+        // Set to no local exclusion here to reflect the default value of local exclusion.
+        priority = excludeLocalRoutes ? RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION
+                                      : RULE_PRIORITY_BYPASSABLE_VPN_NO_LOCAL_EXCLUSION;
     }
     for (unsigned long i = 0; i < uidRangeConfig.uidRanges.size(); i++) {
         EXPECT_EQ(expectedResults[i], ipRuleExistsForRange(priority + uidRangeConfig.subPriority,
@@ -4736,21 +4738,41 @@ TEST_P(VpnParameterizedTest, UidRangeSubPriority_VerifyVpnIpRules) {
     NativeUidRangeConfig uidRangeConfig1 = makeNativeUidRangeConfig(
             VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::DEFAULT_SUB_PRIORITY);
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig1).isOk());
-    verifyVpnUidRules({true}, uidRangeConfig1, sTun.name(), isSecureVPN);
+    verifyVpnUidRules({true}, uidRangeConfig1, sTun.name(), isSecureVPN, false);
 
     NativeUidRangeConfig uidRangeConfig2 =
             makeNativeUidRangeConfig(VPN_NETID2, {makeUidRangeParcel(BASE_UID + 1, BASE_UID + 1)},
                                      UidRanges::DEFAULT_SUB_PRIORITY);
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig2).isOk());
-    verifyVpnUidRules({true}, uidRangeConfig2, sTun2.name(), isSecureVPN);
+    verifyVpnUidRules({true}, uidRangeConfig2, sTun2.name(), isSecureVPN, false);
 
     // Remove uid configs one-by-one. Check if rules match.
     EXPECT_TRUE(mNetd->networkRemoveUidRangesParcel(uidRangeConfig1).isOk());
-    verifyVpnUidRules({false}, uidRangeConfig1, sTun.name(), isSecureVPN);
-    verifyVpnUidRules({true}, uidRangeConfig2, sTun2.name(), isSecureVPN);
+    verifyVpnUidRules({false}, uidRangeConfig1, sTun.name(), isSecureVPN, false);
+    verifyVpnUidRules({true}, uidRangeConfig2, sTun2.name(), isSecureVPN, false);
     EXPECT_TRUE(mNetd->networkRemoveUidRangesParcel(uidRangeConfig2).isOk());
-    verifyVpnUidRules({false}, uidRangeConfig1, sTun.name(), isSecureVPN);
-    verifyVpnUidRules({false}, uidRangeConfig2, sTun2.name(), isSecureVPN);
+    verifyVpnUidRules({false}, uidRangeConfig1, sTun.name(), isSecureVPN, false);
+    verifyVpnUidRules({false}, uidRangeConfig2, sTun2.name(), isSecureVPN, false);
+}
+
+// Verify VPN ip rule on bypassable/secureVPN virtual network with local routes excluded
+TEST_P(VpnParameterizedTest, VerifyVpnIpRules_excludeLocalRoutes) {
+    const bool isSecureVPN = GetParam();
+    // Create VPN with local route excluded
+    auto config = makeNativeNetworkConfig(VPN_NETID, NativeNetworkType::VIRTUAL,
+                                          INetd::PERMISSION_NONE, isSecureVPN, true);
+    EXPECT_TRUE(mNetd->networkCreate(config).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(VPN_NETID, sTun.name()).isOk());
+
+    // Assign uid ranges to VPN. Check if rules match.
+    NativeUidRangeConfig uidRangeConfig1 = makeNativeUidRangeConfig(
+            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::DEFAULT_SUB_PRIORITY);
+    EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig1).isOk());
+    verifyVpnUidRules({true}, uidRangeConfig1, sTun.name(), isSecureVPN, true);
+
+    // Remove uid configs. Check if rules match.
+    EXPECT_TRUE(mNetd->networkRemoveUidRangesParcel(uidRangeConfig1).isOk());
+    verifyVpnUidRules({false}, uidRangeConfig1, sTun.name(), isSecureVPN, true);
 }
 
 // Verify if packets go through the right network when subsidiary priority and VPN works together.
