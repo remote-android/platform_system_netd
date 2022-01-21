@@ -34,11 +34,11 @@
 
 #include <netdutils/Misc.h>
 #include <netdutils/Syscalls.h>
-#include "NetlinkListener.h"
 #include "TrafficController.h"
 #include "bpf/BpfMap.h"
 #include "bpf/BpfUtils.h"
 #include "netdutils/Netlink.h"
+#include "netdutils/NetlinkListener.h"
 
 // A test uid that is large enough so normal apps are not likely to take,
 constexpr uid_t TEST_UID = UID_MAX - 2;
@@ -50,6 +50,7 @@ constexpr uint32_t ENOBUFS_POLL_WAIT_US = 10 * 1000;
 
 using android::base::Error;
 using android::base::Result;
+using android::bpf::BpfMap;
 
 // This test set up a SkDestroyListener that is runing parallel with the production
 // SkDestroyListener. The test will create thousands of sockets and tag them on the
@@ -100,7 +101,7 @@ class NetlinkListenerTest : public testing::Test {
     }
 
     bool checkMassiveSocketDestroy(int totalNumber, bool expectError) {
-        std::unique_ptr<android::net::NetlinkListenerInterface> skDestroyListener;
+        std::unique_ptr<android::netdutils::NetlinkListenerInterface> skDestroyListener;
         auto result = android::net::TrafficController::makeSkDestroyListener();
         if (!isOk(result)) {
             ALOGE("Unable to create SkDestroyListener: %s", toString(result).c_str());

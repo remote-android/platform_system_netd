@@ -41,13 +41,13 @@
 #include <netdutils/StatusOr.h>
 
 #include <netdutils/Misc.h>
+#include <netdutils/NetlinkListener.h>
 #include <netdutils/Syscalls.h>
 #include <netdutils/Utils.h>
 #include <processgroup/processgroup.h>
 #include "TrafficController.h"
 #include "bpf/BpfMap.h"
 
-#include "NetlinkListener.h"
 #include "netdutils/DumpWriter.h"
 
 namespace android {
@@ -55,6 +55,7 @@ namespace net {
 
 using base::StringPrintf;
 using base::unique_fd;
+using bpf::BpfMap;
 using bpf::getSocketCookie;
 using bpf::NONEXISTENT_COOKIE;
 using bpf::OVERFLOW_COUNTERSET;
@@ -63,6 +64,8 @@ using bpf::synchronizeKernelRCU;
 using netdutils::DumpWriter;
 using netdutils::extract;
 using netdutils::getIfaceList;
+using netdutils::NetlinkListener;
+using netdutils::NetlinkListenerInterface;
 using netdutils::ScopedIndent;
 using netdutils::Slice;
 using netdutils::sSyscalls;
