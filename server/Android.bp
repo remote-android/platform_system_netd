@@ -100,7 +100,6 @@ cc_binary {
     init_rc: ["netd.rc"],
     required: [
         "bpfloader",
-        "clatd.o",
     ],
     header_libs: ["bpf_connectivity_headers"],
     shared_libs: [
