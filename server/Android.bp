@@ -101,7 +101,6 @@ cc_binary {
     required: [
         "bpfloader",
         "clatd.o",
-        "netd.o",
     ],
     header_libs: ["bpf_connectivity_headers"],
     shared_libs: [
