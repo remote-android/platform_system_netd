@@ -37,7 +37,7 @@
 // From kernel:include/net/ip.h
 #define IP_DF 0x4000  // Flag: "Don't Fragment"
 
-DEFINE_BPF_MAP(clat_ingress6_map, HASH, ClatIngress6Key, ClatIngress6Value, 16)
+DEFINE_BPF_MAP_GRW(clat_ingress6_map, HASH, ClatIngress6Key, ClatIngress6Value, 16, AID_SYSTEM)
 
 static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet) {
     const int l2_header_size = is_ethernet ? sizeof(struct ethhdr) : 0;
@@ -179,24 +179,24 @@ static inline __always_inline int nat64(struct __sk_buff* skb, bool is_ethernet)
     return TC_ACT_PIPE;
 }
 
-DEFINE_BPF_PROG("schedcls/ingress6/clat_ether", AID_ROOT, AID_ROOT, sched_cls_ingress6_clat_ether)
+DEFINE_BPF_PROG("schedcls/ingress6/clat_ether", AID_ROOT, AID_SYSTEM, sched_cls_ingress6_clat_ether)
 (struct __sk_buff* skb) {
     return nat64(skb, true);
 }
 
-DEFINE_BPF_PROG("schedcls/ingress6/clat_rawip", AID_ROOT, AID_ROOT, sched_cls_ingress6_clat_rawip)
+DEFINE_BPF_PROG("schedcls/ingress6/clat_rawip", AID_ROOT, AID_SYSTEM, sched_cls_ingress6_clat_rawip)
 (struct __sk_buff* skb) {
     return nat64(skb, false);
 }
 
-DEFINE_BPF_MAP(clat_egress4_map, HASH, ClatEgress4Key, ClatEgress4Value, 16)
+DEFINE_BPF_MAP_GRW(clat_egress4_map, HASH, ClatEgress4Key, ClatEgress4Value, 16, AID_SYSTEM)
 
-DEFINE_BPF_PROG("schedcls/egress4/clat_ether", AID_ROOT, AID_ROOT, sched_cls_egress4_clat_ether)
+DEFINE_BPF_PROG("schedcls/egress4/clat_ether", AID_ROOT, AID_SYSTEM, sched_cls_egress4_clat_ether)
 (struct __sk_buff* skb) {
     return TC_ACT_PIPE;
 }
 
-DEFINE_BPF_PROG("schedcls/egress4/clat_rawip", AID_ROOT, AID_ROOT, sched_cls_egress4_clat_rawip)
+DEFINE_BPF_PROG("schedcls/egress4/clat_rawip", AID_ROOT, AID_SYSTEM, sched_cls_egress4_clat_rawip)
 (struct __sk_buff* skb) {
     void* data = (void*)(long)skb->data;
     const void* data_end = (void*)(long)skb->data_end;
