@@ -19,17 +19,15 @@
 
 #include <linux/bpf.h>
 
-#include "NetlinkListener.h"
 #include "Network.h"
 #include "android-base/thread_annotations.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
 #include "bpf_shared.h"
 #include "netdutils/DumpWriter.h"
+#include "netdutils/NetlinkListener.h"
 #include "netdutils/StatusOr.h"
 #include "utils/String16.h"
-
-using android::bpf::BpfMap;
 
 namespace android {
 namespace net {
@@ -117,7 +115,8 @@ class TrafficController {
 
     int toggleUidOwnerMap(ChildChain chain, bool enable) EXCLUDES(mMutex);
 
-    static netdutils::StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener();
+    static netdutils::StatusOr<std::unique_ptr<netdutils::NetlinkListenerInterface>>
+    makeSkDestroyListener();
 
     void setPermissionForUids(int permission, const std::vector<uid_t>& uids) EXCLUDES(mMutex);
 
@@ -139,7 +138,7 @@ class TrafficController {
      * Map Key: uint64_t socket cookie
      * Map Value: UidTagValue, contains a uint32 uid and a uint32 tag.
      */
-    BpfMap<uint64_t, UidTagValue> mCookieTagMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint64_t, UidTagValue> mCookieTagMap GUARDED_BY(mMutex);
 
     /*
      * mUidCounterSetMap: Store the counterSet of a specific uid.
@@ -147,14 +146,14 @@ class TrafficController {
      * Map Value: uint32 counterSet specifies if the traffic is a background
      * or foreground traffic.
      */
-    BpfMap<uint32_t, uint8_t> mUidCounterSetMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint32_t, uint8_t> mUidCounterSetMap GUARDED_BY(mMutex);
 
     /*
      * mAppUidStatsMap: Store the total traffic stats for a uid regardless of
      * tag, counterSet and iface. The stats is used by TrafficStats.getUidStats
      * API to return persistent stats for a specific uid since device boot.
      */
-    BpfMap<uint32_t, StatsValue> mAppUidStatsMap;
+    bpf::BpfMap<uint32_t, StatsValue> mAppUidStatsMap;
 
     /*
      * mStatsMapA/mStatsMapB: Store the traffic statistics for a specific
@@ -165,22 +164,22 @@ class TrafficController {
      * Map Value: Stats, contains packet count and byte count of each
      * transport protocol on egress and ingress direction.
      */
-    BpfMap<StatsKey, StatsValue> mStatsMapA GUARDED_BY(mMutex);
+    bpf::BpfMap<StatsKey, StatsValue> mStatsMapA GUARDED_BY(mMutex);
 
-    BpfMap<StatsKey, StatsValue> mStatsMapB GUARDED_BY(mMutex);
+    bpf::BpfMap<StatsKey, StatsValue> mStatsMapB GUARDED_BY(mMutex);
 
     /*
      * mIfaceIndexNameMap: Store the index name pair of each interface show up
      * on the device since boot. The interface index is used by the eBPF program
      * to correctly match the iface name when receiving a packet.
      */
-    BpfMap<uint32_t, IfaceValue> mIfaceIndexNameMap;
+    bpf::BpfMap<uint32_t, IfaceValue> mIfaceIndexNameMap;
 
     /*
      * mIfaceStataMap: Store per iface traffic stats gathered from xt_bpf
      * filter.
      */
-    BpfMap<uint32_t, StatsValue> mIfaceStatsMap;
+    bpf::BpfMap<uint32_t, StatsValue> mIfaceStatsMap;
 
     /*
      * mConfigurationMap: Store the current network policy about uid filtering
@@ -194,19 +193,19 @@ class TrafficController {
      *    Userspace can do scraping and cleaning job on the other one depending on the
      *    current configs.
      */
-    BpfMap<uint32_t, uint8_t> mConfigurationMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint32_t, uint8_t> mConfigurationMap GUARDED_BY(mMutex);
 
     /*
      * mUidOwnerMap: Store uids that are used for bandwidth control uid match.
      */
-    BpfMap<uint32_t, UidOwnerValue> mUidOwnerMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint32_t, UidOwnerValue> mUidOwnerMap GUARDED_BY(mMutex);
 
     /*
      * mUidOwnerMap: Store uids that are used for INTERNET permission check.
      */
-    BpfMap<uint32_t, uint8_t> mUidPermissionMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint32_t, uint8_t> mUidPermissionMap GUARDED_BY(mMutex);
 
-    std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
+    std::unique_ptr<netdutils::NetlinkListenerInterface> mSkDestroyListener;
 
     netdutils::Status removeRule(uint32_t uid, UidOwnerMatchType match) REQUIRES(mMutex);
 
