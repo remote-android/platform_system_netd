@@ -28,7 +28,6 @@
 #include <regex>
 #include <set>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include <dirent.h>
@@ -78,6 +77,7 @@
 #include "netdutils/Syscalls.h"
 #include "netdutils/Utils.h"
 #include "netid_client.h"  // NETID_UNSET
+#include "nettestutils/DumpService.h"
 #include "test_utils.h"
 #include "tun_interface.h"
 
@@ -97,7 +97,6 @@ using android::String16;
 using android::String8;
 using android::base::Join;
 using android::base::make_scope_guard;
-using android::base::ReadFdToString;
 using android::base::ReadFileToString;
 using android::base::StartsWith;
 using android::base::StringPrintf;
@@ -3962,38 +3961,6 @@ TEST_F(NetdBinderTest, DISABLED_TetherOffloadForwarding) {
     EXPECT_TRUE(mNetd->networkRemoveInterface(TEST_NETID1, sTun.name()).isOk());
 }
 
-namespace {
-
-std::vector<std::string> dumpService(const sp<IBinder>& binder) {
-    unique_fd localFd, remoteFd;
-    bool success = Pipe(&localFd, &remoteFd);
-    EXPECT_TRUE(success) << "Failed to open pipe for dumping: " << strerror(errno);
-    if (!success) return {};
-
-    // dump() blocks until another thread has consumed all its output.
-    std::thread dumpThread = std::thread([binder, remoteFd{std::move(remoteFd)}]() {
-        android::status_t ret = binder->dump(remoteFd, {});
-        EXPECT_EQ(android::OK, ret) << "Error dumping service: " << android::statusToString(ret);
-    });
-
-    std::string dumpContent;
-
-    EXPECT_TRUE(ReadFdToString(localFd.get(), &dumpContent))
-            << "Error during dump: " << strerror(errno);
-    dumpThread.join();
-
-    std::stringstream dumpStream(std::move(dumpContent));
-    std::vector<std::string> lines;
-    std::string line;
-    while (std::getline(dumpStream, line)) {
-        lines.push_back(line);
-    }
-
-    return lines;
-}
-
-}  // namespace
-
 TEST_F(NetdBinderTest, TestServiceDump) {
     sp<IBinder> binder = INetd::asBinder(mNetd);
     ASSERT_NE(nullptr, binder);
@@ -4044,7 +4011,9 @@ TEST_F(NetdBinderTest, TestServiceDump) {
     testData.push_back({"networkDestroy(65123)", "networkDestroy.*65123"});
 
     // Send the service dump request to netd.
-    std::vector<std::string> lines = dumpService(binder);
+    std::vector<std::string> lines = {};
+    android::status_t ret = dumpService(binder, {}, lines);
+    ASSERT_EQ(android::OK, ret) << "Error dumping service: " << android::statusToString(ret);
 
     // Basic regexp to match dump output lines. Matches the beginning and end of the line, and
     // puts the output of the command itself into the first match group.

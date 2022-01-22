@@ -29,7 +29,6 @@ filegroup {
         "NetdConstants.cpp",
         "InterfaceController.cpp",
         "NetlinkCommands.cpp",
-        "NetlinkListener.cpp",
         "TcUtils.cpp",
         "SockDiag.cpp",
         "XfrmController.cpp",
@@ -57,7 +56,6 @@ cc_library_static {
         "IptablesRestoreController.cpp",
         "NFLogListener.cpp",
         "NetlinkCommands.cpp",
-        "NetlinkListener.cpp",
         "NetlinkManager.cpp",
         "TcUtils.cpp",
         "RouteController.cpp",
@@ -100,8 +98,6 @@ cc_binary {
     init_rc: ["netd.rc"],
     required: [
         "bpfloader",
-        "clatd.o",
-        "netd.o",
     ],
     header_libs: ["bpf_connectivity_headers"],
     shared_libs: [
