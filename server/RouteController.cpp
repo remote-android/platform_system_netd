@@ -833,9 +833,13 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
                                                add, IMPLICIT)) {
                 return ret;
             }
-            if (int ret = modifyUidDefaultNetworkRule(table, range.start, range.stop, subPriority,
-                                                      add)) {
-                return ret;
+            // SUB_PRIORITY_NO_DEFAULT is "special" and does not require a
+            // default network rule, see UidRanges.h.
+            if (subPriority != UidRanges::SUB_PRIORITY_NO_DEFAULT) {
+                if (int ret = modifyUidDefaultNetworkRule(table, range.start, range.stop,
+                                                          subPriority, add)) {
+                    return ret;
+                }
             }
         }
     }
