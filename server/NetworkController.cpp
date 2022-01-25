@@ -817,7 +817,7 @@ VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) con
 // undefined. That is a configuration error.
 Network* NetworkController::getPhysicalOrUnreachableNetworkForUserLocked(uid_t uid) const {
     Network* bestNetwork = nullptr;
-    int32_t bestSubPriority = UidRanges::LOWEST_SUB_PRIORITY + 1;
+    int32_t bestSubPriority = UidRanges::SUB_PRIORITY_LOWEST + 1;
     for (const auto& [netId, network] : mNetworks) {
         int32_t subPriority;
         if (!network->isPhysical() && !network->isUnreachable()) continue;

@@ -28,8 +28,8 @@ namespace net {
 
 class UidRanges {
 public:
-    static constexpr int DEFAULT_SUB_PRIORITY = 0;
-    static constexpr int LOWEST_SUB_PRIORITY = 999;
+    static constexpr int SUB_PRIORITY_HIGHEST = 0;
+    static constexpr int SUB_PRIORITY_LOWEST = 999;
 
     UidRanges() {}
     UidRanges(const std::vector<android::net::UidRangeParcel>& ranges);

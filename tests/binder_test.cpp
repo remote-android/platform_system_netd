@@ -4146,8 +4146,8 @@ void verifyVpnUidRules(std::vector<bool>&& expectedResults, NativeUidRangeConfig
     }
 }
 
-constexpr int SUB_PRIORITY_1 = UidRanges::DEFAULT_SUB_PRIORITY + 1;
-constexpr int SUB_PRIORITY_2 = UidRanges::DEFAULT_SUB_PRIORITY + 2;
+constexpr int SUB_PRIORITY_1 = UidRanges::SUB_PRIORITY_HIGHEST + 1;
+constexpr int SUB_PRIORITY_2 = UidRanges::SUB_PRIORITY_HIGHEST + 2;
 
 constexpr int IMPLICITLY_SELECT = 0;
 constexpr int EXPLICITLY_SELECT = 1;
@@ -4263,23 +4263,23 @@ TEST_F(NetdBinderTest, PerAppDefaultNetwork_VerifyIpRules) {
 
     EXPECT_TRUE(mNetd->networkAddUidRanges(APP_DEFAULT_NETID, uidRanges).isOk());
     verifyAppUidRules({true, true} /*expectedResults*/, uidRanges, sTun.name(),
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkRemoveUidRanges(APP_DEFAULT_NETID, {uidRanges.at(0)}).isOk());
     verifyAppUidRules({false, true} /*expectedResults*/, uidRanges, sTun.name(),
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkRemoveUidRanges(APP_DEFAULT_NETID, {uidRanges.at(1)}).isOk());
     verifyAppUidRules({false, false} /*expectedResults*/, uidRanges, sTun.name(),
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
 
     EXPECT_TRUE(mNetd->networkAddUidRanges(INetd::UNREACHABLE_NET_ID, uidRanges).isOk());
     verifyAppUidRules({true, true} /*expectedResults*/, uidRanges, "",
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkRemoveUidRanges(INetd::UNREACHABLE_NET_ID, {uidRanges.at(0)}).isOk());
     verifyAppUidRules({false, true} /*expectedResults*/, uidRanges, "",
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkRemoveUidRanges(INetd::UNREACHABLE_NET_ID, {uidRanges.at(1)}).isOk());
     verifyAppUidRules({false, false} /*expectedResults*/, uidRanges, "",
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
 }
 
 // Verify whether packets go through the right network with and without per-app default network.
@@ -4609,13 +4609,13 @@ TEST_F(NetdBinderTest, UidRangeSubPriority_ValidateInputs) {
     // Invalid priority -10 on a physical network.
     NativeUidRangeConfig uidRangeConfig =
             makeNativeUidRangeConfig(APP_DEFAULT_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)},
-                                     UidRanges::DEFAULT_SUB_PRIORITY - 10);
+                                     UidRanges::SUB_PRIORITY_HIGHEST - 10);
     binder::Status status = mNetd->networkAddUidRangesParcel(uidRangeConfig);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
 
     // Invalid priority 1000 on a physical network.
-    uidRangeConfig.subPriority = UidRanges::LOWEST_SUB_PRIORITY + 1;
+    uidRangeConfig.subPriority = UidRanges::SUB_PRIORITY_LOWEST + 1;
     status = mNetd->networkAddUidRangesParcel(uidRangeConfig);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
@@ -4705,13 +4705,13 @@ TEST_P(VpnParameterizedTest, UidRangeSubPriority_VerifyVpnIpRules) {
 
     // Assign uid ranges to different VPNs. Check if rules match.
     NativeUidRangeConfig uidRangeConfig1 = makeNativeUidRangeConfig(
-            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::DEFAULT_SUB_PRIORITY);
+            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig1).isOk());
     verifyVpnUidRules({true}, uidRangeConfig1, sTun.name(), isSecureVPN, false);
 
     NativeUidRangeConfig uidRangeConfig2 =
             makeNativeUidRangeConfig(VPN_NETID2, {makeUidRangeParcel(BASE_UID + 1, BASE_UID + 1)},
-                                     UidRanges::DEFAULT_SUB_PRIORITY);
+                                     UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig2).isOk());
     verifyVpnUidRules({true}, uidRangeConfig2, sTun2.name(), isSecureVPN, false);
 
@@ -4735,7 +4735,7 @@ TEST_P(VpnParameterizedTest, VerifyVpnIpRules_excludeLocalRoutes) {
 
     // Assign uid ranges to VPN. Check if rules match.
     NativeUidRangeConfig uidRangeConfig1 = makeNativeUidRangeConfig(
-            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::DEFAULT_SUB_PRIORITY);
+            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig1).isOk());
     verifyVpnUidRules({true}, uidRangeConfig1, sTun.name(), isSecureVPN, true);
 
@@ -4786,7 +4786,7 @@ TEST_F(NetdBinderTest, UidRangeSubPriority_ImplicitlySelectNetwork) {
         std::vector<UidRangeParcel> uidRanges;
         unsigned int netId;
     } kTestData[] = {
-            {UidRanges::DEFAULT_SUB_PRIORITY, {makeUidRangeParcel(TEST_UID1)}, VPN_NETID},
+            {UidRanges::SUB_PRIORITY_HIGHEST, {makeUidRangeParcel(TEST_UID1)}, VPN_NETID},
             {SUB_PRIORITY_1,
              {makeUidRangeParcel(TEST_UID1), makeUidRangeParcel(TEST_UID2)},
              APP_DEFAULT_1_NETID},
