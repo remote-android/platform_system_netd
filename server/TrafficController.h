@@ -83,11 +83,6 @@ class TrafficController {
      */
     netdutils::Status swapActiveStatsMap() EXCLUDES(mMutex);
 
-    /*
-     * Add the interface name and index pair into the eBPF map.
-     */
-    int addInterface(const char* name, uint32_t ifaceIndex);
-
     int changeUidOwnerRule(ChildChain chain, const uid_t uid, FirewallRule rule, FirewallType type);
 
     int removeUidOwnerRule(const uid_t uid);
