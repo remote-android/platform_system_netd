@@ -89,7 +89,11 @@ public:
     };
 
     static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;
+    // Offset for the table of virtual local network created from the physical interface.
+    static const int ROUTE_TABLE_OFFSET_FROM_INDEX_FOR_LOCAL = 1000000000;
 
+    static constexpr const char* INTERFACE_LOCAL_SUFFIX = "_local";
+    static constexpr const char* RT_TABLES_PATH = "/data/misc/net/rt_tables";
     static const char* const LOCAL_MANGLE_INPUT;
 
     [[nodiscard]] static int Init(unsigned localNetId);
@@ -180,8 +184,9 @@ public:
     // For testing.
     static int (*iptablesRestoreCommandFunction)(IptablesTarget, const std::string&,
                                                  const std::string&, std::string *);
+    static uint32_t (*ifNameToIndexFunction)(const char*);
 
-private:
+  private:
     friend class RouteControllerTest;
 
     static std::mutex sInterfaceToTableLock;
@@ -189,10 +194,13 @@ private:
 
     static int configureDummyNetwork();
     [[nodiscard]] static int flushRoutes(const char* interface) EXCLUDES(sInterfaceToTableLock);
+    [[nodiscard]] static int flushRoutes(const char* interface, bool local)
+            EXCLUDES(sInterfaceToTableLock);
     [[nodiscard]] static int flushRoutes(uint32_t table);
-    static uint32_t getRouteTableForInterfaceLocked(const char* interface)
+    static uint32_t getRouteTableForInterfaceLocked(const char* interface, bool local)
             REQUIRES(sInterfaceToTableLock);
-    static uint32_t getRouteTableForInterface(const char *interface) EXCLUDES(sInterfaceToTableLock);
+    static uint32_t getRouteTableForInterface(const char* interface, bool local)
+            EXCLUDES(sInterfaceToTableLock);
     static int modifyDefaultNetwork(uint16_t action, const char* interface, Permission permission);
     static int modifyPhysicalNetwork(unsigned netId, const char* interface,
                                      const UidRangeMap& uidRangeMap, Permission permission,
