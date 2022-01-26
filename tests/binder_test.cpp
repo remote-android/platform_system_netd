@@ -113,6 +113,7 @@ using android::net::RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION;
 using android::net::RULE_PRIORITY_BYPASSABLE_VPN_NO_LOCAL_EXCLUSION;
 using android::net::RULE_PRIORITY_DEFAULT_NETWORK;
 using android::net::RULE_PRIORITY_EXPLICIT_NETWORK;
+using android::net::RULE_PRIORITY_LOCAL_ROUTES;
 using android::net::RULE_PRIORITY_OUTPUT_INTERFACE;
 using android::net::RULE_PRIORITY_PROHIBIT_NON_VPN;
 using android::net::RULE_PRIORITY_SECURE_VPN;
@@ -3540,6 +3541,15 @@ void expectVpnFallthroughRuleExists(const std::string& ifName, int vpnNetId) {
     }
 }
 
+void expectVpnLocalExclusionRuleExists(const std::string& ifName) {
+    std::string vpnLocalExclusionRule =
+            StringPrintf("%d:\tfrom all fwmark 0x0/0x10000 iif lo lookup %s",
+                         RULE_PRIORITY_LOCAL_ROUTES, std::string(ifName + "_local").c_str());
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_TRUE(ipRuleExists(ipVersion, vpnLocalExclusionRule));
+    }
+}
+
 void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable, uid_t uid,
                                const TunInterface& fallthroughNetwork,
                                const TunInterface& vpnNetwork, int vpnNetId = TEST_NETID2,
@@ -3576,6 +3586,9 @@ void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable
 
     // Check if fallthrough rule exists
     expectVpnFallthroughRuleExists(fallthroughNetwork.name(), vpnNetId);
+
+    // Check if local exclusion rule exists
+    expectVpnLocalExclusionRuleExists(fallthroughNetwork.name());
 
     // Expect fallthrough to default network
     // The fwmark differs depending on whether the VPN is bypassable or not.
