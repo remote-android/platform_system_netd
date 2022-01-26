@@ -811,17 +811,26 @@ VirtualNetwork* NetworkController::getVirtualNetworkForUserLocked(uid_t uid) con
     return nullptr;
 }
 
-// Returns a network with the highest subsidiary priority among physical and unreachable networks
-// that applies to uid. For a single subsidiary priority, an uid should belong to only one network.
-// If the uid apply to different network with the same priority at the same time, the behavior is
-// undefined. That is a configuration error.
+// Returns the default network with the highest subsidiary priority among physical and unreachable
+// networks that applies to uid. For a single subsidiary priority, an uid should belong to only one
+// network.  If the uid apply to different network with the same priority at the same time, the
+// behavior is undefined. That is a configuration error.
 Network* NetworkController::getPhysicalOrUnreachableNetworkForUserLocked(uid_t uid) const {
     Network* bestNetwork = nullptr;
-    int32_t bestSubPriority = UidRanges::LOWEST_SUB_PRIORITY + 1;
+
+    // In this function, appliesToUser() is used to figure out if this network is the user's default
+    // network (not just if the user has access to this network). Rules at SUB_PRIORITY_NO_DEFAULT
+    // "apply to the user" but do not include a default network rule. Since their subpriority (999)
+    // is greater than SUB_PRIORITY_LOWEST (998), these rules never trump any subpriority that
+    // includes a default network rule (appliesToUser returns the "highest" (=lowest value)
+    // subPriority that includes the uid), and they get filtered out in the if-statement below.
+    int32_t bestSubPriority = UidRanges::SUB_PRIORITY_NO_DEFAULT;
     for (const auto& [netId, network] : mNetworks) {
         int32_t subPriority;
         if (!network->isPhysical() && !network->isUnreachable()) continue;
         if (!network->appliesToUser(uid, &subPriority)) continue;
+        if (subPriority == UidRanges::SUB_PRIORITY_NO_DEFAULT) continue;
+
         if (subPriority < bestSubPriority) {
             bestNetwork = network;
             bestSubPriority = subPriority;
