@@ -436,7 +436,7 @@ binder::Status NetdNativeService::networkAddUidRanges(
     // NetworkController::addUsersToNetwork is thread-safe.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     int ret = gCtls->netCtrl.addUsersToNetwork(netId, UidRanges(uidRangeArray),
-                                               UidRanges::DEFAULT_SUB_PRIORITY);
+                                               UidRanges::SUB_PRIORITY_HIGHEST);
     return statusFromErrcode(ret);
 }
 
@@ -445,7 +445,7 @@ binder::Status NetdNativeService::networkRemoveUidRanges(
     // NetworkController::removeUsersFromNetwork is thread-safe.
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     int ret = gCtls->netCtrl.removeUsersFromNetwork(netId, UidRanges(uidRangeArray),
-                                                    UidRanges::DEFAULT_SUB_PRIORITY);
+                                                    UidRanges::SUB_PRIORITY_HIGHEST);
     return statusFromErrcode(ret);
 }
 

@@ -54,8 +54,8 @@ int UnreachableNetwork::removeUsers(const UidRanges& uidRanges, int32_t subPrior
 }
 
 bool UnreachableNetwork::isValidSubPriority(int32_t priority) {
-    return priority >= UidRanges::DEFAULT_SUB_PRIORITY &&
-           priority <= UidRanges::LOWEST_SUB_PRIORITY;
+    return priority >= UidRanges::SUB_PRIORITY_HIGHEST &&
+           priority <= UidRanges::SUB_PRIORITY_LOWEST;
 }
 
 }  // namespace net
