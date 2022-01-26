@@ -54,6 +54,8 @@ constexpr int32_t RULE_PRIORITY_TETHERING                         = 21000;
 constexpr int32_t RULE_PRIORITY_UID_IMPLICIT_NETWORK              = 22000;
 constexpr int32_t RULE_PRIORITY_IMPLICIT_NETWORK                  = 23000;
 constexpr int32_t RULE_PRIORITY_BYPASSABLE_VPN_NO_LOCAL_EXCLUSION = 24000;
+// Rules used for excluding local route in the VPN network.
+constexpr int32_t RULE_PRIORITY_LOCAL_ROUTES                      = 25000;
 constexpr int32_t RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION    = 26000;
 constexpr int32_t RULE_PRIORITY_VPN_FALLTHROUGH                   = 27000;
 constexpr int32_t RULE_PRIORITY_UID_DEFAULT_NETWORK               = 28000;
@@ -217,6 +219,7 @@ public:
                                     const UidRangeMap& uidRangeMap, bool secure, bool add,
                                     bool modifyNonUidBasedRules, bool excludeLocalRoutes);
     static void updateTableNamesFile() EXCLUDES(sInterfaceToTableLock);
+    static int modifyVpnLocalExclusionRule(uint16_t action, const char* physicalInterface);
 };
 
 // Public because they are called by by RouteControllerTest.cpp.
