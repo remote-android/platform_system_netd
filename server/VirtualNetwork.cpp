@@ -94,7 +94,7 @@ int VirtualNetwork::removeInterface(const std::string& interface) {
 
 bool VirtualNetwork::isValidSubPriority(int32_t priority) {
     // Only supports default subsidiary permissions.
-    return priority == UidRanges::DEFAULT_SUB_PRIORITY;
+    return priority == UidRanges::SUB_PRIORITY_HIGHEST;
 }
 
 }  // namespace net

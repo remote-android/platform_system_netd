@@ -694,7 +694,7 @@ int RouteController::modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId
 [[nodiscard]] static int addLocalNetworkRules(unsigned localNetId) {
     if (int ret = modifyExplicitNetworkRule(localNetId, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
                                             INVALID_UID, INVALID_UID,
-                                            UidRanges::DEFAULT_SUB_PRIORITY, ACTION_ADD)) {
+                                            UidRanges::SUB_PRIORITY_HIGHEST, ACTION_ADD)) {
         return ret;
     }
 
@@ -726,7 +726,7 @@ int RouteController::configureDummyNetwork() {
     }
 
     if ((ret = modifyOutputInterfaceRules(interface, table, PERMISSION_NONE, INVALID_UID,
-                                          INVALID_UID, UidRanges::DEFAULT_SUB_PRIORITY,
+                                          INVALID_UID, UidRanges::SUB_PRIORITY_HIGHEST,
                                           ACTION_ADD))) {
         ALOGE("Can't create oif rules for %s: %s", interface, strerror(-ret));
         return ret;
@@ -760,7 +760,7 @@ int RouteController::configureDummyNetwork() {
     }
     maybeModifyQdiscClsact(interface, add);
     return modifyOutputInterfaceRules(interface, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
-                                      INVALID_UID, INVALID_UID, UidRanges::DEFAULT_SUB_PRIORITY,
+                                      INVALID_UID, INVALID_UID, UidRanges::SUB_PRIORITY_HIGHEST,
                                       add);
 }
 
@@ -833,9 +833,13 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
                                                add, IMPLICIT)) {
                 return ret;
             }
-            if (int ret = modifyUidDefaultNetworkRule(table, range.start, range.stop, subPriority,
-                                                      add)) {
-                return ret;
+            // SUB_PRIORITY_NO_DEFAULT is "special" and does not require a
+            // default network rule, see UidRanges.h.
+            if (subPriority != UidRanges::SUB_PRIORITY_NO_DEFAULT) {
+                if (int ret = modifyUidDefaultNetworkRule(table, range.start, range.stop,
+                                                          subPriority, add)) {
+                    return ret;
+                }
             }
         }
     }
@@ -849,11 +853,11 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
         return ret;
     }
     if (int ret = modifyExplicitNetworkRule(netId, table, permission, INVALID_UID, INVALID_UID,
-                                            UidRanges::DEFAULT_SUB_PRIORITY, add)) {
+                                            UidRanges::SUB_PRIORITY_HIGHEST, add)) {
         return ret;
     }
     if (int ret = modifyOutputInterfaceRules(interface, table, permission, INVALID_UID, INVALID_UID,
-                                             UidRanges::DEFAULT_SUB_PRIORITY, add)) {
+                                             UidRanges::SUB_PRIORITY_HIGHEST, add)) {
         return ret;
     }
 
@@ -1010,7 +1014,7 @@ int RouteController::modifyVirtualNetwork(unsigned netId, const char* interface,
             return ret;
         }
         return modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, UID_ROOT, UID_ROOT,
-                                         UidRanges::DEFAULT_SUB_PRIORITY, add);
+                                         UidRanges::SUB_PRIORITY_HIGHEST, add);
     }
 
     return 0;

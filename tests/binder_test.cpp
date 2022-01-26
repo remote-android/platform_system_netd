@@ -4146,8 +4146,8 @@ void verifyVpnUidRules(std::vector<bool>&& expectedResults, NativeUidRangeConfig
     }
 }
 
-constexpr int SUB_PRIORITY_1 = UidRanges::DEFAULT_SUB_PRIORITY + 1;
-constexpr int SUB_PRIORITY_2 = UidRanges::DEFAULT_SUB_PRIORITY + 2;
+constexpr int SUB_PRIORITY_1 = UidRanges::SUB_PRIORITY_HIGHEST + 1;
+constexpr int SUB_PRIORITY_2 = UidRanges::SUB_PRIORITY_HIGHEST + 2;
 
 constexpr int IMPLICITLY_SELECT = 0;
 constexpr int EXPLICITLY_SELECT = 1;
@@ -4263,23 +4263,23 @@ TEST_F(NetdBinderTest, PerAppDefaultNetwork_VerifyIpRules) {
 
     EXPECT_TRUE(mNetd->networkAddUidRanges(APP_DEFAULT_NETID, uidRanges).isOk());
     verifyAppUidRules({true, true} /*expectedResults*/, uidRanges, sTun.name(),
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkRemoveUidRanges(APP_DEFAULT_NETID, {uidRanges.at(0)}).isOk());
     verifyAppUidRules({false, true} /*expectedResults*/, uidRanges, sTun.name(),
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkRemoveUidRanges(APP_DEFAULT_NETID, {uidRanges.at(1)}).isOk());
     verifyAppUidRules({false, false} /*expectedResults*/, uidRanges, sTun.name(),
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
 
     EXPECT_TRUE(mNetd->networkAddUidRanges(INetd::UNREACHABLE_NET_ID, uidRanges).isOk());
     verifyAppUidRules({true, true} /*expectedResults*/, uidRanges, "",
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkRemoveUidRanges(INetd::UNREACHABLE_NET_ID, {uidRanges.at(0)}).isOk());
     verifyAppUidRules({false, true} /*expectedResults*/, uidRanges, "",
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkRemoveUidRanges(INetd::UNREACHABLE_NET_ID, {uidRanges.at(1)}).isOk());
     verifyAppUidRules({false, false} /*expectedResults*/, uidRanges, "",
-                      UidRanges::DEFAULT_SUB_PRIORITY);
+                      UidRanges::SUB_PRIORITY_HIGHEST);
 }
 
 // Verify whether packets go through the right network with and without per-app default network.
@@ -4609,13 +4609,13 @@ TEST_F(NetdBinderTest, UidRangeSubPriority_ValidateInputs) {
     // Invalid priority -10 on a physical network.
     NativeUidRangeConfig uidRangeConfig =
             makeNativeUidRangeConfig(APP_DEFAULT_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)},
-                                     UidRanges::DEFAULT_SUB_PRIORITY - 10);
+                                     UidRanges::SUB_PRIORITY_HIGHEST - 10);
     binder::Status status = mNetd->networkAddUidRangesParcel(uidRangeConfig);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
 
     // Invalid priority 1000 on a physical network.
-    uidRangeConfig.subPriority = UidRanges::LOWEST_SUB_PRIORITY + 1;
+    uidRangeConfig.subPriority = UidRanges::SUB_PRIORITY_NO_DEFAULT + 1;
     status = mNetd->networkAddUidRangesParcel(uidRangeConfig);
     EXPECT_FALSE(status.isOk());
     EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
@@ -4705,13 +4705,13 @@ TEST_P(VpnParameterizedTest, UidRangeSubPriority_VerifyVpnIpRules) {
 
     // Assign uid ranges to different VPNs. Check if rules match.
     NativeUidRangeConfig uidRangeConfig1 = makeNativeUidRangeConfig(
-            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::DEFAULT_SUB_PRIORITY);
+            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig1).isOk());
     verifyVpnUidRules({true}, uidRangeConfig1, sTun.name(), isSecureVPN, false);
 
     NativeUidRangeConfig uidRangeConfig2 =
             makeNativeUidRangeConfig(VPN_NETID2, {makeUidRangeParcel(BASE_UID + 1, BASE_UID + 1)},
-                                     UidRanges::DEFAULT_SUB_PRIORITY);
+                                     UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig2).isOk());
     verifyVpnUidRules({true}, uidRangeConfig2, sTun2.name(), isSecureVPN, false);
 
@@ -4735,7 +4735,7 @@ TEST_P(VpnParameterizedTest, VerifyVpnIpRules_excludeLocalRoutes) {
 
     // Assign uid ranges to VPN. Check if rules match.
     NativeUidRangeConfig uidRangeConfig1 = makeNativeUidRangeConfig(
-            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::DEFAULT_SUB_PRIORITY);
+            VPN_NETID, {makeUidRangeParcel(BASE_UID, BASE_UID)}, UidRanges::SUB_PRIORITY_HIGHEST);
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig1).isOk());
     verifyVpnUidRules({true}, uidRangeConfig1, sTun.name(), isSecureVPN, true);
 
@@ -4786,7 +4786,7 @@ TEST_F(NetdBinderTest, UidRangeSubPriority_ImplicitlySelectNetwork) {
         std::vector<UidRangeParcel> uidRanges;
         unsigned int netId;
     } kTestData[] = {
-            {UidRanges::DEFAULT_SUB_PRIORITY, {makeUidRangeParcel(TEST_UID1)}, VPN_NETID},
+            {UidRanges::SUB_PRIORITY_HIGHEST, {makeUidRangeParcel(TEST_UID1)}, VPN_NETID},
             {SUB_PRIORITY_1,
              {makeUidRangeParcel(TEST_UID1), makeUidRangeParcel(TEST_UID2)},
              APP_DEFAULT_1_NETID},
@@ -4829,5 +4829,189 @@ TEST_F(NetdBinderTest, UidRangeSubPriority_ImplicitlySelectNetwork) {
                     makeNativeUidRangeConfig(td.netId, td.uidRanges, td.subPriority);
             EXPECT_TRUE(mNetd->networkRemoveUidRangesParcel(uidRangeConfig).isOk());
         }
+    }
+}
+
+class PerAppNetworkPermissionsTest : public NetdBinderTest {
+  public:
+    int bindSocketToNetwork(int sock, int netId, bool explicitlySelected) {
+        ScopedUidChange uidChange(AID_ROOT);
+        Fwmark fwmark;
+        fwmark.explicitlySelected = explicitlySelected;
+        fwmark.netId = netId;
+        return setsockopt(sock, SOL_SOCKET, SO_MARK, &(fwmark.intValue), sizeof(fwmark.intValue));
+    }
+
+    void changeNetworkPermissionForUid(int netId, int uid, bool add) {
+        auto nativeUidRangeConfig = makeNativeUidRangeConfig(netId, {makeUidRangeParcel(uid, uid)},
+                                                             UidRanges::SUB_PRIORITY_NO_DEFAULT);
+        ScopedUidChange rootUid(AID_ROOT);
+        if (add) {
+            EXPECT_TRUE(mNetd->networkAddUidRangesParcel(nativeUidRangeConfig).isOk());
+        } else {
+            EXPECT_TRUE(mNetd->networkRemoveUidRangesParcel(nativeUidRangeConfig).isOk());
+        }
+    }
+
+  protected:
+    static inline const sockaddr_in6 TEST_SOCKADDR_IN6 = {
+            .sin6_family = AF_INET6,
+            .sin6_port = 42,
+            .sin6_addr = V6_ADDR,
+    };
+    std::array<char, 4096> mTestBuf;
+};
+
+TEST_F(PerAppNetworkPermissionsTest, HasExplicitAccess) {
+    // TEST_NETID1 -> restricted network
+    createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_SYSTEM);
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+
+    // Change uid to uid without PERMISSION_SYSTEM
+    ScopedUidChange testUid(TEST_UID1);
+    unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID1, true /*explicitlySelected*/), 0);
+
+    // Test without permissions should fail
+    EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
+
+    // Test access with permission succeeds and packet is routed correctly
+    changeNetworkPermissionForUid(TEST_NETID1, TEST_UID1, true /*add*/);
+    EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), 0);
+    EXPECT_EQ(send(sock, "foo", sizeof("foo"), 0), (int)sizeof("foo"));
+    EXPECT_GT(read(sTun.getFdForTesting(), mTestBuf.data(), mTestBuf.size()), 0);
+
+    // Test removing permissions.
+    // Note: Send will still succeed as the destination is cached in
+    // sock.sk_dest_cache. Try another connect instead.
+    changeNetworkPermissionForUid(TEST_NETID1, TEST_UID1, false /*add*/);
+    EXPECT_EQ(-1, connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)));
+}
+
+TEST_F(PerAppNetworkPermissionsTest, HasImplicitAccess) {
+    // TEST_NETID1 -> restricted network
+    createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_SYSTEM);
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+
+    // Change uid to uid without PERMISSION_SYSTEM
+    ScopedUidChange testUid(TEST_UID1);
+    unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID1, false /*explicitlySelected*/), 0);
+
+    // Note: we cannot call connect() when implicitly selecting the network as
+    // the fwmark would get reset to the default network.
+    // Call connect which should bind socket to default network
+    EXPECT_EQ(sendto(sock, "foo", sizeof("foo"), 0, (sockaddr*)&TEST_SOCKADDR_IN6,
+                     sizeof(TEST_SOCKADDR_IN6)),
+              -1);
+
+    // Test access with permission succeeds and packet is routed correctly
+    changeNetworkPermissionForUid(TEST_NETID1, TEST_UID1, true /*add*/);
+    EXPECT_EQ(sendto(sock, "foo", sizeof("foo"), 0, (sockaddr*)&TEST_SOCKADDR_IN6,
+                     sizeof(TEST_SOCKADDR_IN6)),
+              (int)sizeof("foo"));
+    EXPECT_GT(read(sTun.getFdForTesting(), mTestBuf.data(), mTestBuf.size()), 0);
+}
+
+TEST_F(PerAppNetworkPermissionsTest, DoesNotAffectDefaultNetworkSelection) {
+    // TEST_NETID1 -> default network
+    // TEST_NETID2 -> restricted network
+    createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_NONE);
+    createPhysicalNetwork(TEST_NETID2, sTun2.name(), INetd::PERMISSION_SYSTEM);
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "::/0", "").isOk());
+    mNetd->networkSetDefault(TEST_NETID1);
+
+    changeNetworkPermissionForUid(TEST_NETID2, TEST_UID1, true /*add*/);
+
+    // Change uid to uid without PERMISSION_SYSTEM
+    ScopedUidChange testUid(TEST_UID1);
+    unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+
+    // Connect should select default network
+    EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), 0);
+    EXPECT_EQ(send(sock, "foo", sizeof("foo"), 0), (int)sizeof("foo"));
+    EXPECT_GT(read(sTun.getFdForTesting(), mTestBuf.data(), mTestBuf.size()), 0);
+}
+
+TEST_F(PerAppNetworkPermissionsTest, PermissionDoesNotAffectPerAppDefaultNetworkSelection) {
+    // TEST_NETID1 -> restricted app default network
+    // TEST_NETID2 -> restricted network
+    createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_SYSTEM);
+    createPhysicalNetwork(TEST_NETID2, sTun2.name(), INetd::PERMISSION_SYSTEM);
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "::/0", "").isOk());
+
+    auto nativeUidRangeConfig = makeNativeUidRangeConfig(
+            TEST_NETID1, {makeUidRangeParcel(TEST_UID1, TEST_UID1)}, 0 /*subPriority*/);
+    EXPECT_TRUE(mNetd->networkAddUidRangesParcel(nativeUidRangeConfig).isOk());
+    changeNetworkPermissionForUid(TEST_NETID2, TEST_UID1, true /*add*/);
+
+    // Change uid to uid without PERMISSION_SYSTEM
+    ScopedUidChange testUid(TEST_UID1);
+    unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+
+    // Connect should select app default network
+    EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), 0);
+    EXPECT_EQ(send(sock, "foo", sizeof("foo"), 0), (int)sizeof("foo"));
+    EXPECT_GT(read(sTun.getFdForTesting(), mTestBuf.data(), mTestBuf.size()), 0);
+}
+
+TEST_F(PerAppNetworkPermissionsTest, PermissionOnlyAffectsUid) {
+    // TEST_NETID1 -> restricted network
+    // TEST_NETID2 -> restricted network
+    createPhysicalNetwork(TEST_NETID1, sTun.name(), INetd::PERMISSION_SYSTEM);
+    createPhysicalNetwork(TEST_NETID2, sTun2.name(), INetd::PERMISSION_SYSTEM);
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "::/0", "").isOk());
+
+    // test that neither TEST_UID1, nor TEST_UID2 have access without permission
+    {
+        // TEST_UID1
+        ScopedUidChange testUid(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+        // TEST_NETID1
+        EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID1, true /*explicitlySelected*/), 0);
+        EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
+        // TEST_NETID2
+        EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID2, true /*explicitlySelected*/), 0);
+        EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
+    }
+    {
+        // TEST_UID2
+        ScopedUidChange testUid(TEST_UID2);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+        // TEST_NETID1
+        EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID1, true /*explicitlySelected*/), 0);
+        EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
+        // TEST_NETID2
+        EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID2, true /*explicitlySelected*/), 0);
+        EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
+    }
+
+    changeNetworkPermissionForUid(TEST_NETID1, TEST_UID1, true);
+
+    // test that TEST_UID1 has access to TEST_UID1
+    {
+        // TEST_UID1
+        ScopedUidChange testUid(TEST_UID1);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+        // TEST_NETID1
+        EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID1, true /*explicitlySelected*/), 0);
+        EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), 0);
+        // TEST_NETID2
+        EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID2, true /*explicitlySelected*/), 0);
+        EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
+    }
+    {
+        // TEST_UID2
+        ScopedUidChange testUid(TEST_UID2);
+        unique_fd sock(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+        // TEST_NETID1
+        EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID1, true /*explicitlySelected*/), 0);
+        EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
+        // TEST_NETID2
+        EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID2, true /*explicitlySelected*/), 0);
+        EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
     }
 }
