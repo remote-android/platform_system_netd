@@ -639,6 +639,25 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
                         INVALID_UID);
 }
 
+int RouteController::modifyVpnLocalExclusionRule(uint16_t action, const char* physicalInterface) {
+    uint32_t table = getRouteTableForInterface(physicalInterface, true /* local */);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    fwmark.permission = PERMISSION_NONE;
+    mask.permission = PERMISSION_NONE;
+
+    return modifyIpRule(action, RULE_PRIORITY_LOCAL_ROUTES, table, fwmark.intValue, mask.intValue,
+                        IIF_LOOPBACK, OIF_NONE, INVALID_UID, INVALID_UID);
+}
+
 // A rule to enable split tunnel VPNs.
 //
 // If a packet with a VPN's netId doesn't find a route in the VPN's routing table, it's allowed to
@@ -1233,6 +1252,11 @@ int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* i
                                         MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
+    // TODO: Consider to remove regular table if adding local table failed.
+    if (int ret = modifyVpnLocalExclusionRule(RTM_NEWRULE, interface)) {
+        return ret;
+    }
+
     maybeModifyQdiscClsact(interface, ACTION_ADD);
     updateTableNamesFile();
     return 0;
@@ -1245,12 +1269,19 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
                                         MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
+
+    if (int ret = modifyVpnLocalExclusionRule(RTM_DELRULE, interface)) {
+        return ret;
+    }
+
     if (int ret = flushRoutes(interface)) {
         return ret;
     }
+
     if (int ret = clearTetheringRules(interface)) {
         return ret;
     }
+
     maybeModifyQdiscClsact(interface, ACTION_DEL);
     updateTableNamesFile();
     return 0;
