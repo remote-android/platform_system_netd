@@ -28,9 +28,14 @@ namespace net {
 
 class UidRanges {
 public:
-    static constexpr int RESERVED_SUB_PRIORITY = -1;
-    static constexpr int DEFAULT_SUB_PRIORITY = 0;
-    static constexpr int LOWEST_SUB_PRIORITY = 999;
+    static constexpr int SUB_PRIORITY_HIGHEST = 0;
+    static constexpr int SUB_PRIORITY_LOWEST = 998;
+    // "Special" value used for giving UIDs access to a network (by installing explicit and implicit
+    // network rules) without automatically making that network default. This rule works in
+    // conjunction with the other subpriorities, meaning that the network could still be configured
+    // as the app's default using one of the lower values (0-998).
+    // Note: SUB_PRIORITY_NO_DEFAULT *must* be SUB_PRIORITY_LOWEST + 1!
+    static constexpr int SUB_PRIORITY_NO_DEFAULT = 999;
 
     UidRanges() {}
     UidRanges(const std::vector<android::net::UidRangeParcel>& ranges);

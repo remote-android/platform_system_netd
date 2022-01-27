@@ -639,6 +639,25 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
                         INVALID_UID);
 }
 
+int RouteController::modifyVpnLocalExclusionRule(uint16_t action, const char* physicalInterface) {
+    uint32_t table = getRouteTableForInterface(physicalInterface, true /* local */);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    fwmark.permission = PERMISSION_NONE;
+    mask.permission = PERMISSION_NONE;
+
+    return modifyIpRule(action, RULE_PRIORITY_LOCAL_ROUTES, table, fwmark.intValue, mask.intValue,
+                        IIF_LOOPBACK, OIF_NONE, INVALID_UID, INVALID_UID);
+}
+
 // A rule to enable split tunnel VPNs.
 //
 // If a packet with a VPN's netId doesn't find a route in the VPN's routing table, it's allowed to
@@ -694,7 +713,7 @@ int RouteController::modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId
 [[nodiscard]] static int addLocalNetworkRules(unsigned localNetId) {
     if (int ret = modifyExplicitNetworkRule(localNetId, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
                                             INVALID_UID, INVALID_UID,
-                                            UidRanges::DEFAULT_SUB_PRIORITY, ACTION_ADD)) {
+                                            UidRanges::SUB_PRIORITY_HIGHEST, ACTION_ADD)) {
         return ret;
     }
 
@@ -726,7 +745,7 @@ int RouteController::configureDummyNetwork() {
     }
 
     if ((ret = modifyOutputInterfaceRules(interface, table, PERMISSION_NONE, INVALID_UID,
-                                          INVALID_UID, UidRanges::DEFAULT_SUB_PRIORITY,
+                                          INVALID_UID, UidRanges::SUB_PRIORITY_HIGHEST,
                                           ACTION_ADD))) {
         ALOGE("Can't create oif rules for %s: %s", interface, strerror(-ret));
         return ret;
@@ -760,7 +779,7 @@ int RouteController::configureDummyNetwork() {
     }
     maybeModifyQdiscClsact(interface, add);
     return modifyOutputInterfaceRules(interface, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
-                                      INVALID_UID, INVALID_UID, UidRanges::DEFAULT_SUB_PRIORITY,
+                                      INVALID_UID, INVALID_UID, UidRanges::SUB_PRIORITY_HIGHEST,
                                       add);
 }
 
@@ -833,9 +852,13 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
                                                add, IMPLICIT)) {
                 return ret;
             }
-            if (int ret = modifyUidDefaultNetworkRule(table, range.start, range.stop, subPriority,
-                                                      add)) {
-                return ret;
+            // SUB_PRIORITY_NO_DEFAULT is "special" and does not require a
+            // default network rule, see UidRanges.h.
+            if (subPriority != UidRanges::SUB_PRIORITY_NO_DEFAULT) {
+                if (int ret = modifyUidDefaultNetworkRule(table, range.start, range.stop,
+                                                          subPriority, add)) {
+                    return ret;
+                }
             }
         }
     }
@@ -849,11 +872,11 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
         return ret;
     }
     if (int ret = modifyExplicitNetworkRule(netId, table, permission, INVALID_UID, INVALID_UID,
-                                            UidRanges::DEFAULT_SUB_PRIORITY, add)) {
+                                            UidRanges::SUB_PRIORITY_HIGHEST, add)) {
         return ret;
     }
     if (int ret = modifyOutputInterfaceRules(interface, table, permission, INVALID_UID, INVALID_UID,
-                                             UidRanges::DEFAULT_SUB_PRIORITY, add)) {
+                                             UidRanges::SUB_PRIORITY_HIGHEST, add)) {
         return ret;
     }
 
@@ -1010,7 +1033,7 @@ int RouteController::modifyVirtualNetwork(unsigned netId, const char* interface,
             return ret;
         }
         return modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, UID_ROOT, UID_ROOT,
-                                         UidRanges::DEFAULT_SUB_PRIORITY, add);
+                                         UidRanges::SUB_PRIORITY_HIGHEST, add);
     }
 
     return 0;
@@ -1229,6 +1252,11 @@ int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* i
                                         MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
+    // TODO: Consider to remove regular table if adding local table failed.
+    if (int ret = modifyVpnLocalExclusionRule(RTM_NEWRULE, interface)) {
+        return ret;
+    }
+
     maybeModifyQdiscClsact(interface, ACTION_ADD);
     updateTableNamesFile();
     return 0;
@@ -1241,12 +1269,19 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
                                         MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
+
+    if (int ret = modifyVpnLocalExclusionRule(RTM_DELRULE, interface)) {
+        return ret;
+    }
+
     if (int ret = flushRoutes(interface)) {
         return ret;
     }
+
     if (int ret = clearTetheringRules(interface)) {
         return ret;
     }
+
     maybeModifyQdiscClsact(interface, ACTION_DEL);
     updateTableNamesFile();
     return 0;
