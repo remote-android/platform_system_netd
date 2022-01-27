@@ -639,7 +639,7 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
                         INVALID_UID);
 }
 
-int RouteController::modifyVpnLocalExclusionRule(uint16_t action, const char* physicalInterface) {
+int RouteController::modifyVpnLocalExclusionRule(bool add, const char* physicalInterface) {
     uint32_t table = getRouteTableForInterface(physicalInterface, true /* local */);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
@@ -654,8 +654,55 @@ int RouteController::modifyVpnLocalExclusionRule(uint16_t action, const char* ph
     fwmark.permission = PERMISSION_NONE;
     mask.permission = PERMISSION_NONE;
 
-    return modifyIpRule(action, RULE_PRIORITY_LOCAL_ROUTES, table, fwmark.intValue, mask.intValue,
-                        IIF_LOOPBACK, OIF_NONE, INVALID_UID, INVALID_UID);
+    if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_LOCAL_ROUTES, table,
+                               fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE, INVALID_UID,
+                               INVALID_UID)) {
+        return ret;
+    }
+    return modifyVpnLocalExclusionRoutes(add, physicalInterface);
+}
+
+// TODO: Update the local exclusion routes based on what actual subnet the network is.
+int RouteController::modifyVpnLocalExclusionRoutes(bool add, const char* interface) {
+    for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V4); ++i) {
+        if (int ret = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V4[i])) {
+            // Routes are updated regardless of subnet. The destinations may be unreachable and
+            // cause EACCES error. This may happen now so ignore to not to cause an error.
+            if (ret != -EACCES) {
+                return ret;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V6); ++i) {
+        if (int ret = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V6[i])) {
+            // Routes are updated regardless of subnet. The destinations may be unreachable and
+            // cause EACCES error. This may happen now so ignore to not to cause an error.
+            if (ret != -EACCES) {
+                return ret;
+            }
+        }
+    }
+    return 0;
+}
+
+int RouteController::modifyVpnLocalExclusionRoute(bool add, const char* interface,
+                                                  const char* destination) {
+    uint32_t table = getRouteTableForInterface(interface, true /* local */);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    if (int ret = modifyIpRoute(add ? RTM_NEWROUTE : RTM_DELROUTE,
+                                add ? NETLINK_ROUTE_CREATE_FLAGS : NETLINK_REQUEST_FLAGS, table,
+                                interface, destination, nullptr, 0 /* mtu */, 0 /* priority */)) {
+        // Trying to delete a route that already deleted shouldn't cause an error.
+        if (add || ret != -ESRCH) {
+            return ret;
+        }
+    }
+
+    return 0;
 }
 
 // A rule to enable split tunnel VPNs.
@@ -1249,7 +1296,7 @@ int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* i
         return ret;
     }
     // TODO: Consider to remove regular table if adding local table failed.
-    if (int ret = modifyVpnLocalExclusionRule(RTM_NEWRULE, interface)) {
+    if (int ret = modifyVpnLocalExclusionRule(true, interface)) {
         return ret;
     }
 
@@ -1266,11 +1313,10 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
         return ret;
     }
 
-    if (int ret = modifyVpnLocalExclusionRule(RTM_DELRULE, interface)) {
-        return ret;
-    }
-
-    if (int ret = flushRoutes(interface)) {
+    int ret = modifyVpnLocalExclusionRule(false, interface);
+    // Always perform flushRoute even if removing local exclusion rules failed.
+    ret |= flushRoutes(interface);
+    if (ret) {
         return ret;
     }
 
