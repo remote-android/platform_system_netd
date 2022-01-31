@@ -110,6 +110,7 @@ cc_binary {
         "libhidlbase",
         "liblog",
         "libmdnssd",
+        "libnetd_updatable",
         "libnetd_resolv",
         "libnetdutils",
         "libnetutils",

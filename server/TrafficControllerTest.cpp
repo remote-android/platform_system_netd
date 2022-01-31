@@ -24,7 +24,6 @@
 #include <inttypes.h>
 #include <linux/inet_diag.h>
 #include <linux/sock_diag.h>
-#include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -47,22 +46,17 @@ using base::Result;
 using netdutils::isOk;
 
 constexpr int TEST_MAP_SIZE = 10;
-constexpr int TEST_COOKIE = 1;
 constexpr uid_t TEST_UID = 10086;
 constexpr uid_t TEST_UID2 = 54321;
 constexpr uid_t TEST_UID3 = 98765;
 constexpr uint32_t TEST_TAG = 42;
 constexpr uint32_t TEST_COUNTERSET = 1;
 constexpr uint32_t DEFAULT_COUNTERSET = 0;
-constexpr uint32_t TEST_PER_UID_STATS_ENTRIES_LIMIT = 3;
-constexpr uint32_t TEST_TOTAL_UID_STATS_ENTRIES_LIMIT = 7;
 
 #define ASSERT_VALID(x) ASSERT_TRUE((x).isValid())
 
 class TrafficControllerTest : public ::testing::Test {
   protected:
-    TrafficControllerTest()
-        : mTc(TEST_PER_UID_STATS_ENTRIES_LIMIT, TEST_TOTAL_UID_STATS_ENTRIES_LIMIT) {}
     TrafficController mTc;
     BpfMap<uint64_t, UidTagValue> mFakeCookieTagMap;
     BpfMap<uint32_t, uint8_t> mFakeUidCounterSetMap;
@@ -127,25 +121,6 @@ class TrafficControllerTest : public ::testing::Test {
     int dupFd(const android::base::unique_fd& mapFd) {
         return fcntl(mapFd.get(), F_DUPFD_CLOEXEC, 0);
     }
-
-    int setUpSocketAndTag(int protocol, uint64_t* cookie, uint32_t tag, uid_t uid,
-                          uid_t callingUid) {
-        int sock = socket(protocol, SOCK_STREAM | SOCK_CLOEXEC, 0);
-        EXPECT_LE(0, sock);
-        *cookie = getSocketCookie(sock);
-        EXPECT_NE(NONEXISTENT_COOKIE, *cookie);
-        EXPECT_EQ(0, mTc.tagSocket(sock, tag, uid, callingUid));
-        return sock;
-    }
-
-    void expectUidTag(uint64_t cookie, uid_t uid, uint32_t tag) {
-        Result<UidTagValue> tagResult = mFakeCookieTagMap.readValue(cookie);
-        ASSERT_RESULT_OK(tagResult);
-        EXPECT_EQ(uid, tagResult.value().uid);
-        EXPECT_EQ(tag, tagResult.value().tag);
-    }
-
-    void expectNoTag(uint64_t cookie) { EXPECT_FALSE(mFakeCookieTagMap.readValue(cookie).ok()); }
 
     void populateFakeStats(uint64_t cookie, uint32_t uid, uint32_t tag, StatsKey* key) {
         UidTagValue cookieMapkey = {.uid = (uint32_t)uid, .tag = tag};
@@ -297,121 +272,7 @@ class TrafficControllerTest : public ::testing::Test {
         EXPECT_EQ((uint64_t)100, appStatsResult.value().rxBytes);
     }
 
-    void expectTagSocketReachLimit(uint32_t tag, uint32_t uid) {
-        int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
-        EXPECT_LE(0, sock);
-        if (sock < 0) return;
-        uint64_t sockCookie = getSocketCookie(sock);
-        EXPECT_NE(NONEXISTENT_COOKIE, sockCookie);
-        EXPECT_EQ(-EMFILE, mTc.tagSocket(sock, tag, uid, uid));
-        expectNoTag(sockCookie);
-
-        // Delete stats entries then tag socket success
-        EXPECT_EQ(0, mTc.deleteTagData(0, uid, 0));
-        EXPECT_EQ(0, mTc.tagSocket(sock, tag, uid, uid));
-        expectUidTag(sockCookie, uid, tag);
-    }
 };
-
-TEST_F(TrafficControllerTest, TestTagSocketV4) {
-    uint64_t sockCookie;
-    int v4socket = setUpSocketAndTag(AF_INET, &sockCookie, TEST_TAG, TEST_UID, TEST_UID);
-    expectUidTag(sockCookie, TEST_UID, TEST_TAG);
-    ASSERT_EQ(0, mTc.untagSocket(v4socket));
-    expectNoTag(sockCookie);
-    expectMapEmpty(mFakeCookieTagMap);
-}
-
-TEST_F(TrafficControllerTest, TestReTagSocket) {
-    uint64_t sockCookie;
-    int v4socket = setUpSocketAndTag(AF_INET, &sockCookie, TEST_TAG, TEST_UID, TEST_UID);
-    expectUidTag(sockCookie, TEST_UID, TEST_TAG);
-    ASSERT_EQ(0, mTc.tagSocket(v4socket, TEST_TAG + 1, TEST_UID + 1, TEST_UID + 1));
-    expectUidTag(sockCookie, TEST_UID + 1, TEST_TAG + 1);
-}
-
-TEST_F(TrafficControllerTest, TestTagTwoSockets) {
-    uint64_t sockCookie1;
-    uint64_t sockCookie2;
-    int v4socket1 = setUpSocketAndTag(AF_INET, &sockCookie1, TEST_TAG, TEST_UID, TEST_UID);
-    setUpSocketAndTag(AF_INET, &sockCookie2, TEST_TAG, TEST_UID, TEST_UID);
-    expectUidTag(sockCookie1, TEST_UID, TEST_TAG);
-    expectUidTag(sockCookie2, TEST_UID, TEST_TAG);
-    ASSERT_EQ(0, mTc.untagSocket(v4socket1));
-    expectNoTag(sockCookie1);
-    expectUidTag(sockCookie2, TEST_UID, TEST_TAG);
-    ASSERT_FALSE(mFakeCookieTagMap.getNextKey(sockCookie2).ok());
-}
-
-TEST_F(TrafficControllerTest, TestTagSocketV6) {
-    uint64_t sockCookie;
-    int v6socket = setUpSocketAndTag(AF_INET6, &sockCookie, TEST_TAG, TEST_UID, TEST_UID);
-    expectUidTag(sockCookie, TEST_UID, TEST_TAG);
-    ASSERT_EQ(0, mTc.untagSocket(v6socket));
-    expectNoTag(sockCookie);
-    expectMapEmpty(mFakeCookieTagMap);
-}
-
-TEST_F(TrafficControllerTest, TestTagInvalidSocket) {
-    int invalidSocket = -1;
-    ASSERT_GT(0, mTc.tagSocket(invalidSocket, TEST_TAG, TEST_UID, TEST_UID));
-    expectMapEmpty(mFakeCookieTagMap);
-}
-
-TEST_F(TrafficControllerTest, TestTagSocketWithoutPermission) {
-    int sock = socket(AF_INET6, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    ASSERT_NE(-1, sock);
-    ASSERT_EQ(-EPERM, mTc.tagSocket(sock, TEST_TAG, TEST_UID, TEST_UID2));
-    expectMapEmpty(mFakeCookieTagMap);
-}
-
-TEST_F(TrafficControllerTest, TestTagSocketWithPermission) {
-    // Grant permission to calling uid.
-    std::vector<uid_t> callingUid = {TEST_UID2};
-    mTc.setPermissionForUids(INetd::PERMISSION_UPDATE_DEVICE_STATS, callingUid);
-
-    // Tag a socket to a different uid other then callingUid.
-    uint64_t sockCookie;
-    int v6socket = setUpSocketAndTag(AF_INET6, &sockCookie, TEST_TAG, TEST_UID, TEST_UID2);
-    expectUidTag(sockCookie, TEST_UID, TEST_TAG);
-    EXPECT_EQ(0, mTc.untagSocket(v6socket));
-    expectNoTag(sockCookie);
-    expectMapEmpty(mFakeCookieTagMap);
-
-    // Clean up the permission
-    mTc.setPermissionForUids(INetd::PERMISSION_NONE, callingUid);
-    expectPrivilegedUserSetEmpty();
-}
-
-TEST_F(TrafficControllerTest, TestUntagInvalidSocket) {
-    int invalidSocket = -1;
-    ASSERT_GT(0, mTc.untagSocket(invalidSocket));
-    int v4socket = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    ASSERT_GT(0, mTc.untagSocket(v4socket));
-    expectMapEmpty(mFakeCookieTagMap);
-}
-
-TEST_F(TrafficControllerTest, TestTagSocketReachLimitFail) {
-    uid_t uid = TEST_UID;
-    StatsKey tagStatsMapKey[4];
-    for (int i = 0; i < 3; i++) {
-        uint64_t cookie = TEST_COOKIE + i;
-        uint32_t tag = TEST_TAG + i;
-        populateFakeStats(cookie, uid, tag, &tagStatsMapKey[i]);
-    }
-    expectTagSocketReachLimit(TEST_TAG, TEST_UID);
-}
-
-TEST_F(TrafficControllerTest, TestTagSocketReachTotalLimitFail) {
-    StatsKey tagStatsMapKey[4];
-    for (int i = 0; i < 4; i++) {
-        uint64_t cookie = TEST_COOKIE + i;
-        uint32_t tag = TEST_TAG + i;
-        uid_t uid = TEST_UID + i;
-        populateFakeStats(cookie, uid, tag, &tagStatsMapKey[i]);
-    }
-    expectTagSocketReachLimit(TEST_TAG, TEST_UID);
-}
 
 TEST_F(TrafficControllerTest, TestSetCounterSet) {
     uid_t callingUid = TEST_UID2;

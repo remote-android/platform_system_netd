@@ -34,6 +34,8 @@
 #include "NetworkController.h"
 #include "TrafficController.h"
 
+#include "NetdUpdatablePublic.h"
+
 using android::String16;
 using android::base::ReceiveFileDescriptorVector;
 using android::base::unique_fd;
@@ -309,13 +311,13 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
             if (static_cast<int>(command.uid) == -1) {
                 command.uid = client->getUid();
             }
-            return mTrafficCtrl->tagSocket(*socketFd, command.trafficCtrlInfo, command.uid,
-                                           client->getUid());
+            return libnetd_updatable_tagSocket(*socketFd, command.trafficCtrlInfo, command.uid,
+                                               client->getUid());
         }
 
         case FwmarkCommand::UNTAG_SOCKET: {
             // Any process can untag a socket it has an fd for.
-            return mTrafficCtrl->untagSocket(*socketFd);
+            return libnetd_updatable_untagSocket(*socketFd);
         }
 
         default: {
