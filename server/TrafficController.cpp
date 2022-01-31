@@ -16,7 +16,6 @@
 
 #define LOG_TAG "TrafficController"
 #include <inttypes.h>
-#include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/in.h>
 #include <linux/inet_diag.h>
@@ -44,7 +43,6 @@
 #include <netdutils/NetlinkListener.h>
 #include <netdutils/Syscalls.h>
 #include <netdutils/Utils.h>
-#include <processgroup/processgroup.h>
 #include "TrafficController.h"
 #include "bpf/BpfMap.h"
 
@@ -56,10 +54,7 @@ namespace net {
 using base::StringPrintf;
 using base::unique_fd;
 using bpf::BpfMap;
-using bpf::getSocketCookie;
-using bpf::NONEXISTENT_COOKIE;
 using bpf::OVERFLOW_COUNTERSET;
-using bpf::retrieveProgram;
 using bpf::synchronizeKernelRCU;
 using netdutils::DumpWriter;
 using netdutils::extract;
@@ -75,12 +70,6 @@ using netdutils::status::ok;
 
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
-constexpr int PER_UID_STATS_ENTRIES_LIMIT = 500;
-// At most 90% of the stats map may be used by tagged traffic entries. This ensures
-// that 10% of the map is always available to count untagged traffic, one entry per UID.
-// Otherwise, apps would be able to avoid data usage accounting entirely by filling up the
-// map with tagged traffic entries.
-constexpr int TOTAL_UID_STATS_ENTRIES_LIMIT = STATS_MAP_SIZE * 0.9;
 
 const char* TrafficController::LOCAL_DOZABLE = "fw_dozable";
 const char* TrafficController::LOCAL_STANDBY = "fw_standby";
@@ -91,8 +80,6 @@ static_assert(BPF_PERMISSION_INTERNET == INetd::PERMISSION_INTERNET,
               "Mismatch between BPF and AIDL permissions: PERMISSION_INTERNET");
 static_assert(BPF_PERMISSION_UPDATE_DEVICE_STATS == INetd::PERMISSION_UPDATE_DEVICE_STATS,
               "Mismatch between BPF and AIDL permissions: PERMISSION_UPDATE_DEVICE_STATS");
-static_assert(STATS_MAP_SIZE - TOTAL_UID_STATS_ENTRIES_LIMIT > 100,
-              "The limit for stats map is to high, stats data may be lost due to overflow");
 
 #define FLAG_MSG_TRANS(result, flag, value) \
     do {                                    \
@@ -176,12 +163,6 @@ StatusOr<std::unique_ptr<NetlinkListenerInterface>> TrafficController::makeSkDes
     return listener;
 }
 
-TrafficController::TrafficController()
-    : mPerUidStatsEntriesLimit(PER_UID_STATS_ENTRIES_LIMIT),
-      mTotalUidStatsEntriesLimit(TOTAL_UID_STATS_ENTRIES_LIMIT) {}
-
-TrafficController::TrafficController(uint32_t perUidLimit, uint32_t totalLimit)
-    : mPerUidStatsEntriesLimit(perUidLimit), mTotalUidStatsEntriesLimit(totalLimit) {}
 
 Status TrafficController::initMaps() {
     std::lock_guard guard(mMutex);
@@ -197,59 +178,11 @@ Status TrafficController::initMaps() {
     RETURN_IF_NOT_OK(mConfigurationMap.init(CONFIGURATION_MAP_PATH));
     RETURN_IF_NOT_OK(
             mConfigurationMap.writeValue(UID_RULES_CONFIGURATION_KEY, DEFAULT_CONFIG, BPF_ANY));
-    RETURN_IF_NOT_OK(mConfigurationMap.writeValue(CURRENT_STATS_MAP_CONFIGURATION_KEY, SELECT_MAP_A,
-                                                  BPF_ANY));
 
     RETURN_IF_NOT_OK(mUidOwnerMap.init(UID_OWNER_MAP_PATH));
     RETURN_IF_NOT_OK(mUidOwnerMap.clear());
     RETURN_IF_NOT_OK(mUidPermissionMap.init(UID_PERMISSION_MAP_PATH));
 
-    return netdutils::status::ok;
-}
-
-static Status attachProgramToCgroup(const char* programPath, const unique_fd& cgroupFd,
-                                    bpf_attach_type type) {
-    unique_fd cgroupProg(retrieveProgram(programPath));
-    if (cgroupProg == -1) {
-        int ret = errno;
-        ALOGE("Failed to get program from %s: %s", programPath, strerror(ret));
-        return statusFromErrno(ret, "cgroup program get failed");
-    }
-    if (android::bpf::attachProgram(type, cgroupProg, cgroupFd)) {
-        int ret = errno;
-        ALOGE("Program from %s attach failed: %s", programPath, strerror(ret));
-        return statusFromErrno(ret, "program attach failed");
-    }
-    return netdutils::status::ok;
-}
-
-static Status initPrograms() {
-    std::string cg2_path;
-
-    if (!CgroupGetControllerPath(CGROUPV2_CONTROLLER_NAME, &cg2_path)) {
-         int ret = errno;
-         ALOGE("Failed to find cgroup v2 root");
-         return statusFromErrno(ret, "Failed to find cgroup v2 root");
-    }
-
-    unique_fd cg_fd(open(cg2_path.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC));
-    if (cg_fd == -1) {
-        int ret = errno;
-        ALOGE("Failed to open the cgroup directory: %s", strerror(ret));
-        return statusFromErrno(ret, "Open the cgroup directory failed");
-    }
-    RETURN_IF_NOT_OK(attachProgramToCgroup(BPF_EGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_EGRESS));
-    RETURN_IF_NOT_OK(attachProgramToCgroup(BPF_INGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_INGRESS));
-
-    // For the devices that support cgroup socket filter, the socket filter
-    // should be loaded successfully by bpfloader. So we attach the filter to
-    // cgroup if the program is pinned properly.
-    // TODO: delete the if statement once all devices should support cgroup
-    // socket filter (ie. the minimum kernel version required is 4.14).
-    if (!access(CGROUP_SOCKET_PROG_PATH, F_OK)) {
-        RETURN_IF_NOT_OK(
-                attachProgramToCgroup(CGROUP_SOCKET_PROG_PATH, cg_fd, BPF_CGROUP_INET_SOCK_CREATE));
-    }
     return netdutils::status::ok;
 }
 
@@ -263,8 +196,6 @@ Status TrafficController::start() {
      */
 
     RETURN_IF_NOT_OK(initMaps());
-
-    RETURN_IF_NOT_OK(initPrograms());
 
     auto result = makeSkDestroyListener();
     if (!isOk(result)) {
@@ -301,94 +232,6 @@ Status TrafficController::start() {
     expectOk(mSkDestroyListener->subscribe(kSockDiagDoneMsgType, rxDoneHandler));
 
     return netdutils::status::ok;
-}
-
-int TrafficController::tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid) {
-    std::lock_guard guard(mMutex);
-    if (uid != callingUid && !hasUpdateDeviceStatsPermission(callingUid)) {
-        return -EPERM;
-    }
-    return privilegedTagSocketLocked(sockFd, tag, uid);
-}
-
-int TrafficController::privilegedTagSocket(int sockFd, uint32_t tag, uid_t uid) {
-    std::lock_guard guard(mMutex);
-    return privilegedTagSocketLocked(sockFd, tag, uid);
-}
-
-int TrafficController::privilegedTagSocketLocked(int sockFd, uint32_t tag, uid_t uid) {
-    uint64_t sock_cookie = getSocketCookie(sockFd);
-    if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
-    UidTagValue newKey = {.uid = (uint32_t)uid, .tag = tag};
-
-    uint32_t totalEntryCount = 0;
-    uint32_t perUidEntryCount = 0;
-    // Now we go through the stats map and count how many entries are associated
-    // with target uid. If the uid entry hit the limit for each uid, we block
-    // the request to prevent the map from overflow. It is safe here to iterate
-    // over the map since when mMutex is hold, system server cannot toggle
-    // the live stats map and clean it. So nobody can delete entries from the map.
-    const auto countUidStatsEntries = [uid, &totalEntryCount, &perUidEntryCount](
-                                              const StatsKey& key,
-                                              const BpfMap<StatsKey, StatsValue>&) {
-        if (key.uid == uid) {
-            perUidEntryCount++;
-        }
-        totalEntryCount++;
-        return base::Result<void>();
-    };
-    auto configuration = mConfigurationMap.readValue(CURRENT_STATS_MAP_CONFIGURATION_KEY);
-    if (!configuration.ok()) {
-        ALOGE("Failed to get current configuration: %s, fd: %d",
-              strerror(configuration.error().code()), mConfigurationMap.getMap().get());
-        return -configuration.error().code();
-    }
-    if (configuration.value() != SELECT_MAP_A && configuration.value() != SELECT_MAP_B) {
-        ALOGE("unknown configuration value: %d", configuration.value());
-        return -EINVAL;
-    }
-
-    BpfMap<StatsKey, StatsValue>& currentMap =
-            (configuration.value() == SELECT_MAP_A) ? mStatsMapA : mStatsMapB;
-    base::Result<void> res = currentMap.iterate(countUidStatsEntries);
-    if (!res.ok()) {
-        ALOGE("Failed to count the stats entry in map %d: %s", currentMap.getMap().get(),
-              strerror(res.error().code()));
-        return -res.error().code();
-    }
-
-    if (totalEntryCount > mTotalUidStatsEntriesLimit ||
-        perUidEntryCount > mPerUidStatsEntriesLimit) {
-        ALOGE("Too many stats entries in the map, total count: %u, uid(%u) count: %u, blocking tag"
-              " request to prevent map overflow",
-              totalEntryCount, uid, perUidEntryCount);
-        return -EMFILE;
-    }
-    // Update the tag information of a socket to the cookieUidMap. Use BPF_ANY
-    // flag so it will insert a new entry to the map if that value doesn't exist
-    // yet. And update the tag if there is already a tag stored. Since the eBPF
-    // program in kernel only read this map, and is protected by rcu read lock. It
-    // should be fine to cocurrently update the map while eBPF program is running.
-    res = mCookieTagMap.writeValue(sock_cookie, newKey, BPF_ANY);
-    if (!res.ok()) {
-        ALOGE("Failed to tag the socket: %s, fd: %d", strerror(res.error().code()),
-              mCookieTagMap.getMap().get());
-        return -res.error().code();
-    }
-    return 0;
-}
-
-int TrafficController::untagSocket(int sockFd) {
-    std::lock_guard guard(mMutex);
-    uint64_t sock_cookie = getSocketCookie(sockFd);
-
-    if (sock_cookie == NONEXISTENT_COOKIE) return -errno;
-    base::Result<void> res = mCookieTagMap.deleteValue(sock_cookie);
-    if (!res.ok()) {
-        ALOGE("Failed to untag socket: %s\n", strerror(res.error().code()));
-        return -res.error().code();
-    }
-    return 0;
 }
 
 int TrafficController::setCounterSet(int counterSetNum, uid_t uid, uid_t callingUid) {
