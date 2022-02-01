@@ -209,8 +209,13 @@ class TrafficController {
     netdutils::Status loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
                                            base::unique_fd& cg_fd);
 
+  public:
+    // TODO: TrafficController is going to be removed from netd.
+    // Until that is the case and all callers have been removed, we should call
+    // initMaps() (opens the maps) instead of start()
     netdutils::Status initMaps() EXCLUDES(mMutex);
 
+  private:
     // Keep track of uids that have permission UPDATE_DEVICE_STATS so we don't
     // need to call back to system server for permission check.
     std::set<uid_t> mPrivilegedUser GUARDED_BY(mMutex);

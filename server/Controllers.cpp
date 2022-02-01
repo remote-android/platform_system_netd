@@ -282,7 +282,7 @@ void Controllers::init() {
     clatdCtrl.init();
     gLog.info("Initializing ClatdController: %" PRId64 "us", s.getTimeAndResetUs());
 
-    netdutils::Status tcStatus = trafficCtrl.start();
+    netdutils::Status tcStatus = trafficCtrl.initMaps();
     if (!isOk(tcStatus)) {
         gLog.error("Failed to start trafficcontroller: (%s)", toString(tcStatus).c_str());
         gLog.error("CRITICAL: sleeping 60 seconds, netd exiting with failure, crash loop likely!");
