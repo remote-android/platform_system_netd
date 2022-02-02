@@ -55,7 +55,6 @@
 #include "FirewallController.h" /* For makeCriticalCommands */
 #include "Fwmark.h"
 #include "NetdConstants.h"
-#include "TrafficController.h"
 #include "bpf/BpfUtils.h"
 
 /* Alphabetical */
