@@ -34,8 +34,8 @@
 
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
-#include <bpf/WaitForProgsLoaded.h>
 #include <netdutils/Stopwatch.h>
+#include <processgroup/processgroup.h>
 
 #include "Controllers.h"
 #include "FwmarkServer.h"
@@ -47,6 +47,7 @@
 #include "NetlinkManager.h"
 #include "Process.h"
 
+#include "NetdUpdatablePublic.h"
 #include "netd_resolv/resolv.h"
 
 using android::IPCThreadState;
@@ -85,7 +86,7 @@ void logCallback(const char* msg) {
 int tagSocketCallback(int sockFd, uint32_t tag, uid_t uid, pid_t) {
     // Workaround for secureVPN with VpnIsolation enabled, refer to b/159994981 for details.
     if (tag == TAG_SYSTEM_DNS) uid = AID_DNS;
-    return gCtls->trafficCtrl.privilegedTagSocket(sockFd, tag, uid);
+    return libnetd_updatable_tagSocket(sockFd, tag, uid, AID_DNS);
 }
 
 bool evaluateDomainNameCallback(const android_net_context&, const char* /*name*/) {
@@ -123,9 +124,17 @@ int main() {
         gLog.info("setCloseOnExec(%s)", sock);
     }
 
-    // Make sure BPF programs are loaded before doing anything
-    android::bpf::waitForProgsLoaded();
-    gLog.info("BPF programs are loaded");
+    std::string cg2_path;
+    if (!CgroupGetControllerPath(CGROUPV2_CONTROLLER_NAME, &cg2_path)) {
+        ALOGE("Failed to find cgroup v2 root %s", strerror(errno));
+        exit(1);
+    }
+
+    if (libnetd_updatable_init(cg2_path.c_str())) {
+        ALOGE("libnetd_updatable_init failed");
+        exit(1);
+    }
+    gLog.info("libnetd_updatable_init success");
 
     NetlinkManager *nm = NetlinkManager::Instance();
     if (nm == nullptr) {
