@@ -82,7 +82,6 @@ cc_test {
         "bpf_base_test.cpp",
         "netd_client_test.cpp",
         "netd_test.cpp",
-        "netlink_listener_test.cpp",
     ],
     include_dirs: ["system/netd/server"],
     header_libs: ["bpf_connectivity_headers"],
