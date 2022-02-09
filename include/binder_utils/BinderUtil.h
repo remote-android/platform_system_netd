@@ -151,3 +151,10 @@ inline android::binder::Status checkAnyPermission(const std::vector<const char*>
     return android::binder::Status::fromExceptionCode(android::binder::Status::EX_SECURITY,
                                                       err.c_str());
 }
+
+inline android::binder::Status statusFromErrcode(int ret) {
+    if (ret) {
+        return android::binder::Status::fromServiceSpecificError(-ret, strerror(-ret));
+    }
+    return android::binder::Status::ok();
+}

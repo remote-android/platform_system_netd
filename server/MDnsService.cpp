@@ -99,18 +99,17 @@ binder::Status MDnsService::stopOperation(int32_t /*id*/) {
     return binder::Status::ok();
 }
 
-binder::Status MDnsService::registerEventListener(
-        const android::sp<IMDnsEventListener>& /*listener*/) {
+binder::Status MDnsService::registerEventListener(const android::sp<IMDnsEventListener>& listener) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = MDnsEventReporter::getInstance().addEventListener(listener);
+    return statusFromErrcode(res);
 }
 
 binder::Status MDnsService::unregisterEventListener(
-        const android::sp<IMDnsEventListener>& /*listener*/) {
+        const android::sp<IMDnsEventListener>& listener) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = MDnsEventReporter::getInstance().removeEventListener(listener);
+    return statusFromErrcode(res);
 }
 
 }  // namespace android::net

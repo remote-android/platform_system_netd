@@ -131,6 +131,7 @@ cc_binary {
         "EventReporter.cpp",
         "FwmarkServer.cpp",
         "LocalNetwork.cpp",
+        "MDnsEventReporter.cpp",
         "MDnsSdListener.cpp",
         "MDnsService.cpp",
         "NetdCommand.cpp",

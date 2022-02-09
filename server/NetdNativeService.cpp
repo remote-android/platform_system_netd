@@ -111,13 +111,6 @@ binder::Status asBinderStatus(const base::Result<T> result) {
                                                     result.error().message().c_str());
 }
 
-inline binder::Status statusFromErrcode(int ret) {
-    if (ret) {
-        return binder::Status::fromServiceSpecificError(-ret, strerror(-ret));
-    }
-    return binder::Status::ok();
-}
-
 bool contains(const Vector<String16>& words, const String16& word) {
     for (const auto& w : words) {
         if (w == word) return true;
