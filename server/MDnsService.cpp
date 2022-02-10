@@ -59,44 +59,49 @@ status_t MDnsService::start() {
 
 binder::Status MDnsService::startDaemon() {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = mListener.startDaemon();
+    return statusFromErrcode(res);
 }
 
 binder::Status MDnsService::stopDaemon() {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = mListener.stopDaemon();
+    return statusFromErrcode(res);
 }
 
-binder::Status MDnsService::registerService(const RegistrationInfo& /*info*/) {
+binder::Status MDnsService::registerService(const RegistrationInfo& info) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = mListener.serviceRegister(
+            info.id, info.serviceName.c_str(), info.registrationType.c_str(), nullptr /* domain */,
+            nullptr /* host */, info.port, info.txtRecord, info.interfaceIdx);
+    return statusFromErrcode(res);
 }
 
-binder::Status MDnsService::discover(const DiscoveryInfo& /*info*/) {
+binder::Status MDnsService::discover(const DiscoveryInfo& info) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = mListener.discover(info.interfaceIdx, info.registrationType.c_str(),
+                                 nullptr /* domain */, info.id, 0 /* requestFlags */);
+    return statusFromErrcode(res);
 }
 
-binder::Status MDnsService::resolve(const ResolutionInfo& /*info*/) {
+binder::Status MDnsService::resolve(const ResolutionInfo& info) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = mListener.resolveService(info.id, info.interfaceIdx, info.serviceName.c_str(),
+                                       info.registrationType.c_str(), info.domain.c_str());
+    return statusFromErrcode(res);
 }
 
-binder::Status MDnsService::getServiceAddress(const GetAddressInfo& /*info*/) {
+binder::Status MDnsService::getServiceAddress(const GetAddressInfo& info) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = mListener.getAddrInfo(info.id, info.interfaceIdx, 0 /* protocol */,
+                                    info.hostname.c_str());
+    return statusFromErrcode(res);
 }
 
-binder::Status MDnsService::stopOperation(int32_t /*id*/) {
+binder::Status MDnsService::stopOperation(int32_t id) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    // default no-op
-    return binder::Status::ok();
+    int res = mListener.stop(id);
+    return statusFromErrcode(res);
 }
 
 binder::Status MDnsService::registerEventListener(const android::sp<IMDnsEventListener>& listener) {

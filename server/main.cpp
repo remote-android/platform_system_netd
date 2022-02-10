@@ -179,12 +179,6 @@ int main() {
         exit(1);
     }
 
-    MDnsSdListener mdnsl;
-    if (mdnsl.startListener()) {
-        ALOGE("Unable to start MDnsSdListener (%s)", strerror(errno));
-        exit(1);
-    }
-
     FwmarkServer fwmarkServer(&gCtls->netCtrl, &gCtls->eventReporter);
     if (fwmarkServer.startListener()) {
         ALOGE("Unable to start FwmarkServer (%s)", strerror(errno));
