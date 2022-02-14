@@ -273,14 +273,9 @@ binder::Status NetdNativeService::isAlive(bool *alive) {
     return binder::Status::ok();
 }
 
-binder::Status NetdNativeService::firewallReplaceUidChain(const std::string& chainName,
-                                                          bool isAllowlist,
-                                                          const std::vector<int32_t>& uids,
-                                                          bool* ret) {
-    NETD_LOCKING_RPC(gCtls->firewallCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    int err = gCtls->trafficCtrl.replaceUidOwnerMap(chainName, isAllowlist, uids);
-    *ret = (err == 0);
-    return binder::Status::ok();
+binder::Status NetdNativeService::firewallReplaceUidChain(const std::string&, bool,
+                                                          const std::vector<int32_t>&, bool*) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
 binder::Status NetdNativeService::bandwidthEnableDataSaver(bool enable, bool *ret) {
@@ -322,61 +317,20 @@ binder::Status NetdNativeService::bandwidthSetGlobalAlert(int64_t bytes) {
     return statusFromErrcode(res);
 }
 
-namespace {
-
-int manipulateSpecialApps(const std::vector<uint32_t>& appUids, UidOwnerMatchType matchType,
-                          TrafficController::IptOp op) {
-    Status status = gCtls->trafficCtrl.updateUidOwnerMap(appUids, matchType, op);
-    if (!isOk(status)) {
-        ALOGE("unable to update the Bandwidth Uid Map: %s", toString(status).c_str());
-    }
-    return status.code();
+binder::Status NetdNativeService::bandwidthAddNaughtyApp(int32_t) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
-int addNaughtyApps(const std::vector<uint32_t>& appUids) {
-    return manipulateSpecialApps(appUids, PENALTY_BOX_MATCH, TrafficController::IptOpInsert);
+binder::Status NetdNativeService::bandwidthRemoveNaughtyApp(int32_t) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
-int removeNaughtyApps(const std::vector<uint32_t>& appUids) {
-    return manipulateSpecialApps(appUids, PENALTY_BOX_MATCH, TrafficController::IptOpDelete);
+binder::Status NetdNativeService::bandwidthAddNiceApp(int32_t) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
-int addNiceApps(const std::vector<uint32_t>& appUids) {
-    return manipulateSpecialApps(appUids, HAPPY_BOX_MATCH, TrafficController::IptOpInsert);
-}
-
-int removeNiceApps(const std::vector<uint32_t>& appUids) {
-    return manipulateSpecialApps(appUids, HAPPY_BOX_MATCH, TrafficController::IptOpDelete);
-}
-
-}  // namespace
-
-binder::Status NetdNativeService::bandwidthAddNaughtyApp(int32_t uid) {
-    NETD_LOCKING_RPC(gCtls->bandwidthCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    std::vector<uint32_t> appUids = {static_cast<uint32_t>(abs(uid))};
-    int res = addNaughtyApps(appUids);
-    return statusFromErrcode(res);
-}
-
-binder::Status NetdNativeService::bandwidthRemoveNaughtyApp(int32_t uid) {
-    NETD_LOCKING_RPC(gCtls->bandwidthCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    std::vector<uint32_t> appUids = {static_cast<uint32_t>(abs(uid))};
-    int res = removeNaughtyApps(appUids);
-    return statusFromErrcode(res);
-}
-
-binder::Status NetdNativeService::bandwidthAddNiceApp(int32_t uid) {
-    NETD_LOCKING_RPC(gCtls->bandwidthCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    std::vector<uint32_t> appUids = {static_cast<uint32_t>(abs(uid))};
-    int res = addNiceApps(appUids);
-    return statusFromErrcode(res);
-}
-
-binder::Status NetdNativeService::bandwidthRemoveNiceApp(int32_t uid) {
-    NETD_LOCKING_RPC(gCtls->bandwidthCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    std::vector<uint32_t> appUids = {static_cast<uint32_t>(abs(uid))};
-    int res = removeNiceApps(appUids);
-    return statusFromErrcode(res);
+binder::Status NetdNativeService::bandwidthRemoveNiceApp(int32_t) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
 // TODO: Remove this function when there are no users. Currently, it is still used by DNS resolver
@@ -820,8 +774,7 @@ binder::Status NetdNativeService::wakeupDelInterface(const std::string& ifName,
 }
 
 binder::Status NetdNativeService::trafficSwapActiveStatsMap() {
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-    return asBinderStatus(gCtls->trafficCtrl.swapActiveStatsMap());
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
 binder::Status NetdNativeService::idletimerAddInterface(const std::string& ifName, int32_t timeout,
@@ -1214,11 +1167,8 @@ binder::Status NetdNativeService::networkCanProtect(int32_t uid, bool* ret) {
     return binder::Status::ok();
 }
 
-binder::Status NetdNativeService::trafficSetNetPermForUids(int32_t permission,
-                                                           const std::vector<int32_t>& uids) {
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-    gCtls->trafficCtrl.setPermissionForUids(permission, intsToUids(uids));
-    return binder::Status::ok();
+binder::Status NetdNativeService::trafficSetNetPermForUids(int32_t, const std::vector<int32_t>&) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
 binder::Status NetdNativeService::firewallSetFirewallType(int32_t firewallType) {
@@ -1238,38 +1188,21 @@ binder::Status NetdNativeService::firewallSetInterfaceRule(const std::string& if
     return statusFromErrcode(res);
 }
 
-binder::Status NetdNativeService::firewallSetUidRule(int32_t childChain, int32_t uid,
-                                                     int32_t firewallRule) {
-    NETD_LOCKING_RPC(gCtls->firewallCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    auto chain = static_cast<ChildChain>(childChain);
-    auto rule = static_cast<FirewallRule>(firewallRule);
-    FirewallType fType = gCtls->trafficCtrl.getFirewallType(chain);
-
-    int res = gCtls->trafficCtrl.changeUidOwnerRule(chain, uid, rule, fType);
-    return statusFromErrcode(res);
+binder::Status NetdNativeService::firewallSetUidRule(int32_t, int32_t, int32_t) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
-binder::Status NetdNativeService::firewallEnableChildChain(int32_t childChain, bool enable) {
-    NETD_LOCKING_RPC(gCtls->firewallCtrl.lock, PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    auto chain = static_cast<ChildChain>(childChain);
-
-    int res = gCtls->trafficCtrl.toggleUidOwnerMap(chain, enable);
-    return statusFromErrcode(res);
+binder::Status NetdNativeService::firewallEnableChildChain(int32_t, bool) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
-binder::Status NetdNativeService::firewallAddUidInterfaceRules(const std::string& ifName,
-                                                               const std::vector<int32_t>& uids) {
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-
-    return asBinderStatus(gCtls->trafficCtrl.addUidInterfaceRules(
-            RouteController::getIfIndex(ifName.c_str()), uids));
+binder::Status NetdNativeService::firewallAddUidInterfaceRules(const std::string&,
+                                                               const std::vector<int32_t>&) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
-binder::Status NetdNativeService::firewallRemoveUidInterfaceRules(
-        const std::vector<int32_t>& uids) {
-    ENFORCE_NETWORK_STACK_PERMISSIONS();
-
-    return asBinderStatus(gCtls->trafficCtrl.removeUidInterfaceRules(uids));
+binder::Status NetdNativeService::firewallRemoveUidInterfaceRules(const std::vector<int32_t>&) {
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
 binder::Status NetdNativeService::tetherAddForward(const std::string& intIface,

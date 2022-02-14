@@ -3130,35 +3130,6 @@ TEST_F(NetdBinderTest, TcpBufferSet) {
     updateAndCheckTcpBuffer(mNetd, rmemValue, wmemValue);
 }
 
-namespace {
-
-void checkUidsInPermissionMap(std::vector<int32_t>& uids, bool exist) {
-    android::bpf::BpfMap<uint32_t, uint8_t> uidPermissionMap(UID_PERMISSION_MAP_PATH);
-    for (int32_t uid : uids) {
-        android::base::Result<uint8_t> permission = uidPermissionMap.readValue(uid);
-        if (exist) {
-            ASSERT_RESULT_OK(permission);
-            EXPECT_EQ(INetd::PERMISSION_NONE, permission.value());
-        } else {
-            ASSERT_FALSE(permission.ok());
-            EXPECT_EQ(ENOENT, permission.error().code());
-        }
-    }
-}
-
-}  // namespace
-
-TEST_F(NetdBinderTest, TestInternetPermission) {
-    std::vector<int32_t> appUids = {TEST_UID1, TEST_UID2};
-
-    mNetd->trafficSetNetPermForUids(INetd::PERMISSION_INTERNET, appUids);
-    checkUidsInPermissionMap(appUids, false);
-    mNetd->trafficSetNetPermForUids(INetd::PERMISSION_NONE, appUids);
-    checkUidsInPermissionMap(appUids, true);
-    mNetd->trafficSetNetPermForUids(INetd::PERMISSION_UNINSTALLED, appUids);
-    checkUidsInPermissionMap(appUids, false);
-}
-
 TEST_F(NetdBinderTest, UnsolEvents) {
     auto testUnsolService = android::net::TestUnsolService::start();
     std::string oldTunName = sTun.name();
