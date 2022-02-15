@@ -24,10 +24,11 @@
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <linux/if_packet.h>
 #include <netutils/ifc.h>
 
 extern "C" {
-#include <netutils/checksum.h>
+#include <checksum.h>
 }
 
 #include "ClatdController.h"
@@ -41,6 +42,7 @@ namespace android {
 namespace net {
 
 using android::base::StringPrintf;
+using android::net::TunInterface;
 
 // Mock functions for isIpv4AddressFree.
 bool neverFree(in_addr_t /* addr */) {
@@ -84,6 +86,18 @@ class ClatdControllerTest : public IptablesBaseTest {
     }
     void makeChecksumNeutral(in6_addr* a, const in_addr b, const in6_addr& c) {
         ClatdController::makeChecksumNeutral(a, b, c);
+    }
+    int detect_mtu(const struct in6_addr* a, uint32_t b, uint32_t c) {
+        return mClatdCtrl.detect_mtu(a, b, c);
+    }
+    int configure_tun_ip(const char* a, const char* b, int c) {
+        std::lock_guard guard(mClatdCtrl.mutex);
+        return mClatdCtrl.configure_tun_ip(a, b, c);
+    }
+    int configure_clat_ipv6_address(ClatdController::ClatdTracker* a,
+                                    ClatdController::tun_data* b) {
+        std::lock_guard guard(mClatdCtrl.mutex);
+        return mClatdCtrl.configure_clat_ipv6_address(a, b);
     }
 };
 
@@ -202,6 +216,107 @@ TEST_F(ClatdControllerTest, RemoveIptablesRule) {
              "*raw\n"
              "-D clat_raw_PREROUTING -i wlan0 -s 64:ff9b::/96 -d 2001:db8::a:b:c:d -j DROP\n"
              "COMMIT\n"}});
+}
+
+TEST_F(ClatdControllerTest, DetectMtu) {
+    // ::1 with bottom 32 bits set to 1 is still ::1 which routes via lo with mtu of 64KiB
+    ASSERT_EQ(detect_mtu(&in6addr_loopback, htonl(1), 0 /*MARK_UNSET*/), 65536);
+}
+
+// Get the first IPv4 address for a given interface name
+in_addr* getinterface_ip(const char* interface) {
+    ifaddrs *ifaddr, *ifa;
+    in_addr* retval = nullptr;
+
+    if (getifaddrs(&ifaddr) == -1) return nullptr;
+
+    for (ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == nullptr) continue;
+
+        if ((strcmp(ifa->ifa_name, interface) == 0) && (ifa->ifa_addr->sa_family == AF_INET)) {
+            retval = (in_addr*)malloc(sizeof(in_addr));
+            if (retval) {
+                const sockaddr_in* sin = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
+                *retval = sin->sin_addr;
+            }
+            break;
+        }
+    }
+
+    freeifaddrs(ifaddr);
+    return retval;
+}
+
+TEST_F(ClatdControllerTest, ConfigureTunIpManual) {
+    // Create an interface for configure_tun_ip to configure and bring up.
+    TunInterface v4Iface;
+    ASSERT_EQ(0, v4Iface.init());
+
+    configure_tun_ip(v4Iface.name().c_str(), "192.0.2.1" /* v4Str */, 1472 /* mtu */);
+    in_addr* ip = getinterface_ip(v4Iface.name().c_str());
+    ASSERT_NE(nullptr, ip);
+    EXPECT_EQ(inet_addr("192.0.2.1"), ip->s_addr);
+    free(ip);
+
+    v4Iface.destroy();
+}
+
+ClatdController::tun_data makeTunData() {
+    // Create some fake but realistic-looking sockets so configure_clat_ipv6_address doesn't balk.
+    return {
+            .read_fd6 = socket(AF_PACKET, SOCK_DGRAM | SOCK_CLOEXEC, htons(ETH_P_IPV6)),
+            .write_fd6 = socket(AF_INET6, SOCK_RAW | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_RAW),
+            .fd4 = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0),
+    };
+}
+
+void cleanupTunData(ClatdController::tun_data* tunnel) {
+    close(tunnel->write_fd6);
+    close(tunnel->read_fd6);
+    close(tunnel->fd4);
+}
+
+TEST_F(ClatdControllerTest, ConfigureIpv6Address) {
+    // Create an interface for configure_clat_ipv6_address to attach socket filter to.
+    TunInterface v6Iface;
+    ASSERT_EQ(0, v6Iface.init());
+    ClatdController::tun_data tunnel = makeTunData();
+
+    // Only initialize valid value to configure_clat_ipv6_address() required fields
+    // {ifIndex, v6, v6Str}. The uninitialized fields have initialized with invalid
+    // value just in case.
+    ClatdController::ClatdTracker tracker = {
+            .pid = -1,              // unused
+            .ifIndex = 0,           // initialize later
+            .iface = "",            // unused
+            .v4ifIndex = 0,         // unused
+            .v4iface = "",          // unused
+            .fwmark.intValue = 0,   // unused
+            .fwmarkString = "0x0",  // unused
+            .v4 = {},               // unused
+            .v4Str = "",            // unused
+            .v6 = {},               // initialize later
+            .v6Str = "",            // initialize later
+            .pfx96 = {},            // unused
+            .pfx96String = "",      // unused
+    };
+    tracker.ifIndex = static_cast<unsigned int>(v6Iface.ifindex());
+    const char* addrStr = "2001:db8::f00";
+    ASSERT_EQ(1, inet_pton(AF_INET6, addrStr, &tracker.v6));
+    strlcpy(tracker.v6Str, addrStr, sizeof(tracker.v6Str));
+
+    ASSERT_EQ(0, configure_clat_ipv6_address(&tracker, &tunnel));
+
+    // Check that the packet socket is bound to the interface. We can't check the socket filter
+    // because there is no way to fetch it from the kernel.
+    sockaddr_ll sll;
+    socklen_t len = sizeof(sll);
+    ASSERT_EQ(0, getsockname(tunnel.read_fd6, reinterpret_cast<sockaddr*>(&sll), &len));
+    EXPECT_EQ(htons(ETH_P_IPV6), sll.sll_protocol);
+    EXPECT_EQ(sll.sll_ifindex, v6Iface.ifindex());
+
+    v6Iface.destroy();
+    cleanupTunData(&tunnel);
 }
 
 }  // namespace net

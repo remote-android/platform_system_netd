@@ -237,11 +237,10 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
 }
 
 bool PhysicalNetwork::isValidSubPriority(int32_t priority) {
-    // RESERVED_SUB_PRIORITY and INT_MAX are for special purpose.
-    return priority == UidRanges::RESERVED_SUB_PRIORITY ||
-           (priority >= UidRanges::DEFAULT_SUB_PRIORITY &&
-            priority <= UidRanges::LOWEST_SUB_PRIORITY) ||
-           priority == INT_MAX;
+    // SUB_PRIORITY_NO_DEFAULT is a special value, see UidRanges.h.
+    return (priority >= UidRanges::SUB_PRIORITY_HIGHEST &&
+            priority <= UidRanges::SUB_PRIORITY_LOWEST) ||
+           priority == UidRanges::SUB_PRIORITY_NO_DEFAULT;
 }
 
 }  // namespace android::net

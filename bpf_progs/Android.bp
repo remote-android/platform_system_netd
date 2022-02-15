@@ -27,34 +27,3 @@ cc_library_headers {
     name: "netd_bpf_progs_headers",
     export_include_dirs: ["."],
 }
-
-//
-// bpf kernel programs
-//
-bpf {
-    name: "clatd.o",
-    srcs: ["clatd.c"],
-    cflags: [
-        "-Wall",
-        "-Werror",
-    ],
-    include_dirs: [
-        "frameworks/libs/net/common/netd/libnetdutils/include",
-        // TODO: remove when this module is moved to Tethering module
-        "packages/modules/Connectivity/bpf_progs",
-    ],
-}
-
-bpf {
-    name: "netd.o",
-    srcs: ["netd.c"],
-    cflags: [
-        "-Wall",
-        "-Werror",
-    ],
-    include_dirs: [
-        "frameworks/libs/net/common/netd/libnetdutils/include",
-        // TODO: remove when this module is moved to Tethering module
-        "packages/modules/Connectivity/bpf_progs",
-    ],
-}

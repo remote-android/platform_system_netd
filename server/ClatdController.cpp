@@ -19,6 +19,7 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <linux/if_packet.h>
 #include <linux/if_tun.h>
 #include <linux/ioctl.h>
 #include <net/if.h>
@@ -34,6 +35,9 @@
 #include "ClatdController.h"
 #include "InterfaceController.h"
 
+#include <android/net/InterfaceConfigurationParcel.h>
+#include <netdutils/Status.h>
+
 #include "android-base/properties.h"
 #include "android-base/scopeguard.h"
 #include "android-base/stringprintf.h"
@@ -43,7 +47,7 @@
 #include "netdutils/DumpWriter.h"
 
 extern "C" {
-#include "netutils/checksum.h"
+#include "checksum.h"
 }
 
 #include "Fwmark.h"
@@ -52,7 +56,13 @@ extern "C" {
 #include "TcUtils.h"
 #include "netid_client.h"
 
-static const char* kClatdPath = "/system/bin/clatd";
+// Sync from external/android-clat/clatd.{c, h}
+#define MAXMTU 65536
+#define PACKETLEN (MAXMTU + sizeof(struct tun_pi))
+/* 40 bytes IPv6 header - 20 bytes IPv4 header + 8 bytes fragment header */
+#define MTU_DELTA 28
+
+static const char* kClatdPath = "/apex/com.android.tethering/bin/for-system/clatd";
 
 // For historical reasons, start with 192.0.0.4, and after that, use all subsequent addresses in
 // 192.0.0.0/29 (RFC 7335).
@@ -422,6 +432,208 @@ int ClatdController::ClatdTracker::init(unsigned networkId, const std::string& i
     return 0;
 }
 
+/* function: configure_tun_ip
+ * configures the ipv4 address on the tunnel interface
+ *   v4iface - tunnel interface name
+ *   v4Str   - tunnel ipv4 address
+ *   mtu     - mtu of tun device
+ * returns: 0 on success, -errno on failure
+ */
+int ClatdController::configure_tun_ip(const char* v4iface, const char* v4Str, int mtu) {
+    ALOGI("Using IPv4 address %s on %s", v4Str, v4iface);
+
+    // Configure the interface before bringing it up. As soon as we bring the interface up, the
+    // framework will be notified and will assume the interface's configuration has been finalized.
+    std::string mtuStr = std::to_string(mtu);
+    if (int res = InterfaceController::setMtu(v4iface, mtuStr.c_str())) {
+        ALOGE("setMtu %s failed (%s)", v4iface, strerror(-res));
+        return res;
+    }
+
+    InterfaceConfigurationParcel ifConfig;
+    ifConfig.ifName = std::string(v4iface);
+    ifConfig.ipv4Addr = std::string(v4Str);
+    ifConfig.prefixLength = 32;
+    ifConfig.hwAddr = std::string("");
+    ifConfig.flags = std::vector<std::string>{std::string(String8(INetd::IF_STATE_UP().string()))};
+    const auto& status = InterfaceController::setCfg(ifConfig);
+    if (!status.ok()) {
+        ALOGE("configure_tun_ip/setCfg failed: %s", strerror(status.code()));
+        return -status.code();
+    }
+
+    return 0;
+}
+
+/* function: add_anycast_address
+ * adds an anycast IPv6 address to an interface, returns 0 on success and <0 on failure
+ *   sock      - the socket to add the address to
+ *   addr      - the IP address to add
+ *   ifindex   - index of interface to add the address to
+ * returns: 0 on success, -errno on failure
+ */
+int ClatdController::add_anycast_address(int sock, struct in6_addr* addr, int ifindex) {
+    struct ipv6_mreq mreq = {*addr, ifindex};
+    int ret = setsockopt(sock, SOL_IPV6, IPV6_JOIN_ANYCAST, &mreq, sizeof(mreq));
+    if (ret) {
+        ret = errno;
+        ALOGE("setsockopt(IPV6_JOIN_ANYCAST): %s", strerror(errno));
+        return -ret;
+    }
+
+    return 0;
+}
+
+/* function: configure_packet_socket
+ * Binds the packet socket and attaches the receive filter to it.
+ *   sock    - the socket to configure
+ *   addr    - the IP address to filter
+ *   ifindex - index of interface to add the filter to
+ * returns: 0 on success, -errno on failure
+ */
+int ClatdController::configure_packet_socket(int sock, in6_addr* addr, int ifindex) {
+    uint32_t* ipv6 = addr->s6_addr32;
+
+    // clang-format off
+    struct sock_filter filter_code[] = {
+    // Load the first four bytes of the IPv6 destination address (starts 24 bytes in).
+    // Compare it against the first four bytes of our IPv6 address, in host byte order (BPF loads
+    // are always in host byte order). If it matches, continue with next instruction (JMP 0). If it
+    // doesn't match, jump ahead to statement that returns 0 (ignore packet). Repeat for the other
+    // three words of the IPv6 address, and if they all match, return PACKETLEN (accept packet).
+        BPF_STMT(BPF_LD  | BPF_W   | BPF_ABS,  24),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,    htonl(ipv6[0]), 0, 7),
+        BPF_STMT(BPF_LD  | BPF_W   | BPF_ABS,  28),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,    htonl(ipv6[1]), 0, 5),
+        BPF_STMT(BPF_LD  | BPF_W   | BPF_ABS,  32),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,    htonl(ipv6[2]), 0, 3),
+        BPF_STMT(BPF_LD  | BPF_W   | BPF_ABS,  36),
+        BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K,    htonl(ipv6[3]), 0, 1),
+        BPF_STMT(BPF_RET | BPF_K,              PACKETLEN),
+        BPF_STMT(BPF_RET | BPF_K,              0),
+    };
+    // clang-format on
+    struct sock_fprog filter = {sizeof(filter_code) / sizeof(filter_code[0]), filter_code};
+
+    if (setsockopt(sock, SOL_SOCKET, SO_ATTACH_FILTER, &filter, sizeof(filter))) {
+        int res = errno;
+        ALOGE("attach packet filter failed: %s", strerror(errno));
+        return -res;
+    }
+
+    struct sockaddr_ll sll = {
+            .sll_family = AF_PACKET,
+            .sll_protocol = htons(ETH_P_IPV6),
+            .sll_ifindex = ifindex,
+            .sll_pkttype =
+                    PACKET_OTHERHOST,  // The 464xlat IPv6 address is not assigned to the kernel.
+    };
+    if (bind(sock, (struct sockaddr*)&sll, sizeof(sll))) {
+        int res = errno;
+        ALOGE("binding packet socket: %s", strerror(errno));
+        return -res;
+    }
+
+    return 0;
+}
+
+/* function: configure_clat_ipv6_address
+ * picks the clat IPv6 address and configures packet translation to use it.
+ *   tunnel - tun device data
+ *   interface - uplink interface name
+ * returns: 0 on success, -errno on failure
+ */
+int ClatdController::configure_clat_ipv6_address(struct ClatdTracker* tracker,
+                                                 struct tun_data* tunnel) {
+    ALOGI("Using IPv6 address %s on %s", tracker->v6Str, tracker->iface);
+
+    // Start translating packets to the new prefix.
+    // TODO: return if error. b/212679140 needs to be fixed first.
+    add_anycast_address(tunnel->write_fd6, &tracker->v6, tracker->ifIndex);
+
+    // Update our packet socket filter to reflect the new 464xlat IP address.
+    if (int res = configure_packet_socket(tunnel->read_fd6, &tracker->v6, tracker->ifIndex)) {
+        // Things aren't going to work. Bail out and hope we have better luck next time.
+        // We don't log an error here because configure_packet_socket has already done so.
+        return res;
+    }
+
+    return 0;
+}
+
+/* function: detect mtu
+ * returns: mtu on success, -errno on failure
+ */
+int ClatdController::detect_mtu(const struct in6_addr* plat_subnet, uint32_t plat_suffix,
+                                uint32_t mark) {
+    // Create an IPv6 UDP socket.
+    unique_fd s(socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    if (s < 0) {
+        int ret = errno;
+        ALOGE("socket(AF_INET6, SOCK_DGRAM, 0) failed: %s", strerror(errno));
+        return -ret;
+    }
+
+    // Socket's mark affects routing decisions (network selection)
+    if ((mark != MARK_UNSET) && setsockopt(s, SOL_SOCKET, SO_MARK, &mark, sizeof(mark))) {
+        int ret = errno;
+        ALOGE("setsockopt(SOL_SOCKET, SO_MARK) failed: %s", strerror(errno));
+        return -ret;
+    }
+
+    // Try to connect udp socket to plat_subnet(96 bits):plat_suffix(32 bits)
+    struct sockaddr_in6 dst = {
+            .sin6_family = AF_INET6,
+            .sin6_addr = *plat_subnet,
+    };
+    dst.sin6_addr.s6_addr32[3] = plat_suffix;
+    if (connect(s, (struct sockaddr*)&dst, sizeof(dst))) {
+        int ret = errno;
+        ALOGE("connect() failed: %s", strerror(errno));
+        return -ret;
+    }
+
+    // Fetch the socket's IPv6 mtu - this is effectively fetching mtu from routing table
+    int mtu;
+    socklen_t sz_mtu = sizeof(mtu);
+    if (getsockopt(s, SOL_IPV6, IPV6_MTU, &mtu, &sz_mtu)) {
+        int ret = errno;
+        ALOGE("getsockopt(SOL_IPV6, IPV6_MTU) failed: %s", strerror(errno));
+        return -ret;
+    }
+    if (sz_mtu != sizeof(mtu)) {
+        ALOGE("getsockopt(SOL_IPV6, IPV6_MTU) returned unexpected size: %d", sz_mtu);
+        return -EFAULT;
+    }
+
+    return mtu;
+}
+
+/* function: configure_interface
+ * reads the configuration and applies it to the interface
+ *   tracker - clat tracker
+ *   tunnel - tun device data
+ * returns: 0 on success, -errno on failure
+ */
+int ClatdController::configure_interface(struct ClatdTracker* tracker, struct tun_data* tunnel) {
+    int res = detect_mtu(&tracker->pfx96, htonl(0x08080808), tracker->fwmark.intValue);
+    if (res < 0) return -res;
+
+    int mtu = res;
+    // clamp to minimum ipv6 mtu - this probably cannot ever trigger
+    if (mtu < 1280) mtu = 1280;
+    // clamp to buffer size
+    if (mtu > MAXMTU) mtu = MAXMTU;
+    // decrease by ipv6(40) + ipv6 fragmentation header(8) vs ipv4(20) overhead of 28 bytes
+    mtu -= MTU_DELTA;
+    ALOGI("ipv4 mtu is %d", mtu);
+
+    if (int ret = configure_tun_ip(tracker->v4iface, tracker->v4Str, mtu)) return ret;
+    if (int ret = configure_clat_ipv6_address(tracker, tunnel)) return ret;
+
+    return 0;
+}
+
 int ClatdController::startClatd(const std::string& interface, const std::string& nat64Prefix,
                                 std::string* v6Str) {
     std::lock_guard guard(mutex);
@@ -487,22 +699,85 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
     char passedTunFdStr[INT32_STRLEN];
     snprintf(passedTunFdStr, sizeof(passedTunFdStr), "%d", passedTunFd.get());
 
-    // 8. we're going to use this as argv[0] to clatd to make ps output more useful
+    // 8. create a raw socket for clatd sending packets to the tunnel
+    res = socket(AF_INET6, SOCK_RAW | SOCK_NONBLOCK | SOCK_CLOEXEC, IPPROTO_RAW);
+    if (res < 0) {
+        res = errno;
+        ALOGE("raw socket failed: %s", strerror(errno));
+        return -res;
+    }
+    unique_fd tmpRawSock(res);
+
+    const int mark = tracker.fwmark.intValue;
+    if (mark != MARK_UNSET &&
+        setsockopt(tmpRawSock, SOL_SOCKET, SO_MARK, &mark, sizeof(mark)) < 0) {
+        res = errno;
+        ALOGE("could not set mark on raw socket: %s", strerror(errno));
+        return -res;
+    }
+
+    // create a throwaway socket to reserve a file descriptor number
+    res = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (res == -1) {
+        res = errno;
+        ALOGE("socket(ipv6/udp) failed (%s) for raw socket", strerror(res));
+        return -res;
+    }
+    unique_fd passedRawSock(res);
+
+    // this is the raw socket FD we'll pass to clatd on the cli, so need it as a string
+    char passedRawSockStr[INT32_STRLEN];
+    snprintf(passedRawSockStr, sizeof(passedRawSockStr), "%d", passedRawSock.get());
+
+    // 9. create a packet socket for clatd sending packets to the tunnel
+    // Will eventually be bound to htons(ETH_P_IPV6) protocol,
+    // but only after appropriate bpf filter is attached.
+    res = socket(AF_PACKET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (res < 0) {
+        res = errno;
+        ALOGE("packet socket failed: %s", strerror(errno));
+        return -res;
+    }
+    unique_fd tmpPacketSock(res);
+
+    // create a throwaway socket to reserve a file descriptor number
+    res = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (res == -1) {
+        res = errno;
+        ALOGE("socket(ipv6/udp) failed (%s) for packet socket", strerror(res));
+        return -res;
+    }
+    unique_fd passedPacketSock(res);
+
+    // this is the packet socket FD we'll pass to clatd on the cli, so need it as a string
+    char passedPacketSockStr[INT32_STRLEN];
+    snprintf(passedPacketSockStr, sizeof(passedPacketSock), "%d", passedPacketSock.get());
+
+    // 10. configure tun and clat interface
+    struct tun_data tunnel = {.fd4 = tmpTunFd, .read_fd6 = tmpPacketSock, .write_fd6 = tmpRawSock};
+    res = configure_interface(&tracker, &tunnel);
+    if (res) {
+        ALOGE("configure interface failed: %s", strerror(res));
+        return -res;
+    }
+
+    // 11. we're going to use this as argv[0] to clatd to make ps output more useful
     std::string progname("clatd-");
     progname += tracker.iface;
 
     // clang-format off
     const char* args[] = {progname.c_str(),
                           "-i", tracker.iface,
-                          "-m", tracker.fwmarkString,
                           "-p", tracker.pfx96String,
                           "-4", tracker.v4Str,
                           "-6", tracker.v6Str,
                           "-t", passedTunFdStr,
+                          "-r", passedPacketSockStr,
+                          "-w", passedRawSockStr,
                           nullptr};
     // clang-format on
 
-    // 9. register vfork requirement
+    // 12. register vfork requirement
     posix_spawnattr_t attr;
     res = posix_spawnattr_init(&attr);
     if (res) {
@@ -516,7 +791,7 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
         return -res;
     }
 
-    // 10. register dup2() action: this is what 'clears' the CLOEXEC flag
+    // 13. register dup2() action: this is what 'clears' the CLOEXEC flag
     // on the tun fd that we want the child clatd process to inherit
     // (this will happen after the vfork, and before the execve)
     posix_spawn_file_actions_t fa;
@@ -528,21 +803,31 @@ int ClatdController::startClatd(const std::string& interface, const std::string&
     const android::base::ScopeGuard faGuard = [&] { posix_spawn_file_actions_destroy(&fa); };
     res = posix_spawn_file_actions_adddup2(&fa, tmpTunFd, passedTunFd);
     if (res) {
-        ALOGE("posix_spawn_file_actions_adddup2 failed (%s)", strerror(res));
+        ALOGE("posix_spawn_file_actions_adddup2 tun fd failed (%s)", strerror(res));
+        return -res;
+    }
+    res = posix_spawn_file_actions_adddup2(&fa, tmpPacketSock, passedPacketSock);
+    if (res) {
+        ALOGE("posix_spawn_file_actions_adddup2 packet socket failed (%s)", strerror(res));
+        return -res;
+    }
+    res = posix_spawn_file_actions_adddup2(&fa, tmpRawSock, passedRawSock);
+    if (res) {
+        ALOGE("posix_spawn_file_actions_adddup2 raw socket failed (%s)", strerror(res));
         return -res;
     }
 
-    // 11. add the drop rule for iptables.
+    // 14. add the drop rule for iptables.
     setIptablesDropRule(true, tracker.iface, tracker.pfx96String, tracker.v6Str);
 
-    // 12. actually perform vfork/dup2/execve
+    // 15. actually perform vfork/dup2/execve
     res = posix_spawn(&tracker.pid, kClatdPath, &fa, &attr, (char* const*)args, nullptr);
     if (res) {
         ALOGE("posix_spawn failed (%s)", strerror(res));
         return -res;
     }
 
-    // 13. configure eBPF offload - if possible
+    // 16. configure eBPF offload - if possible
     maybeStartBpf(tracker);
 
     mClatdTrackers[interface] = tracker;

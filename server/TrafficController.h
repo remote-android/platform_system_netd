@@ -19,54 +19,34 @@
 
 #include <linux/bpf.h>
 
-#include "NetlinkListener.h"
 #include "Network.h"
 #include "android-base/thread_annotations.h"
 #include "android-base/unique_fd.h"
 #include "bpf/BpfMap.h"
 #include "bpf_shared.h"
 #include "netdutils/DumpWriter.h"
+#include "netdutils/NetlinkListener.h"
 #include "netdutils/StatusOr.h"
 #include "utils/String16.h"
-
-using android::bpf::BpfMap;
 
 namespace android {
 namespace net {
 
 class TrafficController {
   public:
-    TrafficController();
     /*
      * Initialize the whole controller
      */
     netdutils::Status start();
-    /*
-     * Tag the socket with the specified tag and uid. In the qtaguid module, the
-     * first tag request that grab the spinlock of rb_tree can update the tag
-     * information first and other request need to wait until it finish. All the
-     * tag request will be addressed in the order of they obtaining the spinlock.
-     * In the eBPF implementation, the kernel will try to update the eBPF map
-     * entry with the tag request. And the hashmap update process is protected by
-     * the spinlock initialized with the map. So the behavior of two modules
-     * should be the same. No additional lock needed.
-     */
-    int tagSocket(int sockFd, uint32_t tag, uid_t uid, uid_t callingUid) EXCLUDES(mMutex);
 
     /*
-     * Similar as tagSocket, but skip UPDATE_DEVICE_STATS permission check.
-     */
-    int privilegedTagSocket(int sockFd, uint32_t tag, uid_t uid) EXCLUDES(mMutex);
-
-    /*
-     * The untag process is similiar to tag socket and both old qtaguid module and
-     * new eBPF module have spinlock inside the kernel for concurrent update. No
-     * external lock is required.
-     */
-    int untagSocket(int sockFd);
-
-    /*
-     * Similiar as above, no external lock required.
+     * In the qtaguid module, the first request that grab the spinlock of rb_tree can
+     * update the tag information first and other request need to wait until it finish.
+     * All the request will be addressed in the order of they obtaining the spinlock.
+     * In the eBPF implementation, the kernel will try to update the eBPF map entry
+     * with the request. And the hashmap update process is protected by the spinlock
+     * initialized with the map. So the behavior of two modules should be the same.
+     * No additional lock needed.
      */
     int setCounterSet(int counterSetNum, uid_t uid, uid_t callingUid) EXCLUDES(mMutex);
 
@@ -84,11 +64,6 @@ class TrafficController {
      * Swap the stats map config from current active stats map to the idle one.
      */
     netdutils::Status swapActiveStatsMap() EXCLUDES(mMutex);
-
-    /*
-     * Add the interface name and index pair into the eBPF map.
-     */
-    int addInterface(const char* name, uint32_t ifaceIndex);
 
     int changeUidOwnerRule(ChildChain chain, const uid_t uid, FirewallRule rule, FirewallType type);
 
@@ -117,7 +92,8 @@ class TrafficController {
 
     int toggleUidOwnerMap(ChildChain chain, bool enable) EXCLUDES(mMutex);
 
-    static netdutils::StatusOr<std::unique_ptr<NetlinkListenerInterface>> makeSkDestroyListener();
+    static netdutils::StatusOr<std::unique_ptr<netdutils::NetlinkListenerInterface>>
+    makeSkDestroyListener();
 
     void setPermissionForUids(int permission, const std::vector<uid_t>& uids) EXCLUDES(mMutex);
 
@@ -139,7 +115,7 @@ class TrafficController {
      * Map Key: uint64_t socket cookie
      * Map Value: UidTagValue, contains a uint32 uid and a uint32 tag.
      */
-    BpfMap<uint64_t, UidTagValue> mCookieTagMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint64_t, UidTagValue> mCookieTagMap GUARDED_BY(mMutex);
 
     /*
      * mUidCounterSetMap: Store the counterSet of a specific uid.
@@ -147,14 +123,14 @@ class TrafficController {
      * Map Value: uint32 counterSet specifies if the traffic is a background
      * or foreground traffic.
      */
-    BpfMap<uint32_t, uint8_t> mUidCounterSetMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint32_t, uint8_t> mUidCounterSetMap GUARDED_BY(mMutex);
 
     /*
      * mAppUidStatsMap: Store the total traffic stats for a uid regardless of
      * tag, counterSet and iface. The stats is used by TrafficStats.getUidStats
      * API to return persistent stats for a specific uid since device boot.
      */
-    BpfMap<uint32_t, StatsValue> mAppUidStatsMap;
+    bpf::BpfMap<uint32_t, StatsValue> mAppUidStatsMap;
 
     /*
      * mStatsMapA/mStatsMapB: Store the traffic statistics for a specific
@@ -165,22 +141,22 @@ class TrafficController {
      * Map Value: Stats, contains packet count and byte count of each
      * transport protocol on egress and ingress direction.
      */
-    BpfMap<StatsKey, StatsValue> mStatsMapA GUARDED_BY(mMutex);
+    bpf::BpfMap<StatsKey, StatsValue> mStatsMapA GUARDED_BY(mMutex);
 
-    BpfMap<StatsKey, StatsValue> mStatsMapB GUARDED_BY(mMutex);
+    bpf::BpfMap<StatsKey, StatsValue> mStatsMapB GUARDED_BY(mMutex);
 
     /*
      * mIfaceIndexNameMap: Store the index name pair of each interface show up
      * on the device since boot. The interface index is used by the eBPF program
      * to correctly match the iface name when receiving a packet.
      */
-    BpfMap<uint32_t, IfaceValue> mIfaceIndexNameMap;
+    bpf::BpfMap<uint32_t, IfaceValue> mIfaceIndexNameMap;
 
     /*
      * mIfaceStataMap: Store per iface traffic stats gathered from xt_bpf
      * filter.
      */
-    BpfMap<uint32_t, StatsValue> mIfaceStatsMap;
+    bpf::BpfMap<uint32_t, StatsValue> mIfaceStatsMap;
 
     /*
      * mConfigurationMap: Store the current network policy about uid filtering
@@ -194,19 +170,19 @@ class TrafficController {
      *    Userspace can do scraping and cleaning job on the other one depending on the
      *    current configs.
      */
-    BpfMap<uint32_t, uint8_t> mConfigurationMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint32_t, uint8_t> mConfigurationMap GUARDED_BY(mMutex);
 
     /*
      * mUidOwnerMap: Store uids that are used for bandwidth control uid match.
      */
-    BpfMap<uint32_t, UidOwnerValue> mUidOwnerMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint32_t, UidOwnerValue> mUidOwnerMap GUARDED_BY(mMutex);
 
     /*
      * mUidOwnerMap: Store uids that are used for INTERNET permission check.
      */
-    BpfMap<uint32_t, uint8_t> mUidPermissionMap GUARDED_BY(mMutex);
+    bpf::BpfMap<uint32_t, uint8_t> mUidPermissionMap GUARDED_BY(mMutex);
 
-    std::unique_ptr<NetlinkListenerInterface> mSkDestroyListener;
+    std::unique_ptr<netdutils::NetlinkListenerInterface> mSkDestroyListener;
 
     netdutils::Status removeRule(uint32_t uid, UidOwnerMatchType match) REQUIRES(mMutex);
 
@@ -230,20 +206,16 @@ class TrafficController {
     //    read the map that system_server is cleaning up.
     std::mutex mMutex;
 
-    // The limit on the number of stats entries a uid can have in the per uid stats map.
-    // TrafficController will block that specific uid from tagging new sockets after the limit is
-    // reached.
-    const uint32_t mPerUidStatsEntriesLimit;
-
-    // The limit on the total number of stats entries in the per uid stats map. TrafficController
-    // will block all tagging requests after the limit is reached.
-    const uint32_t mTotalUidStatsEntriesLimit;
-
     netdutils::Status loadAndAttachProgram(bpf_attach_type type, const char* path, const char* name,
                                            base::unique_fd& cg_fd);
 
+  public:
+    // TODO: TrafficController is going to be removed from netd.
+    // Until that is the case and all callers have been removed, we should call
+    // initMaps() (opens the maps) instead of start()
     netdutils::Status initMaps() EXCLUDES(mMutex);
 
+  private:
     // Keep track of uids that have permission UPDATE_DEVICE_STATS so we don't
     // need to call back to system server for permission check.
     std::set<uid_t> mPrivilegedUser GUARDED_BY(mMutex);
@@ -251,9 +223,6 @@ class TrafficController {
     bool hasUpdateDeviceStatsPermission(uid_t uid) REQUIRES(mMutex);
 
     int privilegedTagSocketLocked(int sockFd, uint32_t tag, uid_t uid) REQUIRES(mMutex);
-
-    // For testing
-    TrafficController(uint32_t perUidLimit, uint32_t totalLimit);
 
     // For testing
     friend class TrafficControllerTest;

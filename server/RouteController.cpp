@@ -48,7 +48,7 @@ using android::net::UidRangeParcel;
 namespace android::net {
 
 auto RouteController::iptablesRestoreCommandFunction = execIptablesRestoreCommand;
-
+auto RouteController::ifNameToIndexFunction = if_nametoindex;
 // BEGIN CONSTANTS --------------------------------------------------------------------------------
 
 const uint32_t ROUTE_TABLE_LOCAL_NETWORK  = 97;
@@ -76,7 +76,6 @@ const bool ACTION_ADD = true;
 const bool ACTION_DEL = false;
 const bool MODIFY_NON_UID_BASED_RULES = true;
 
-const char* const RT_TABLES_PATH = "/data/misc/net/rt_tables";
 const mode_t RT_TABLES_MODE = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;  // mode 0644, rw-r--r--
 
 // Avoids "non-constant-expression cannot be narrowed from type 'unsigned int' to 'unsigned short'"
@@ -127,8 +126,16 @@ static const char* familyName(uint8_t family) {
 
 static void maybeModifyQdiscClsact(const char* interface, bool add);
 
+static uint32_t getRouteTableIndexFromGlobalRouteTableIndex(uint32_t index, bool local) {
+    // The local table is
+    // "global table - ROUTE_TABLE_OFFSET_FROM_INDEX + ROUTE_TABLE_OFFSET_FROM_INDEX_FOR_LOCAL"
+    const uint32_t localTableOffset = RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX_FOR_LOCAL -
+                                      RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
+    return local ? index + localTableOffset : index;
+}
+
 // Caller must hold sInterfaceToTableLock.
-uint32_t RouteController::getRouteTableForInterfaceLocked(const char* interface) {
+uint32_t RouteController::getRouteTableForInterfaceLocked(const char* interface, bool local) {
     // If we already know the routing table for this interface name, use it.
     // This ensures we can remove rules and routes for an interface that has been removed,
     // or has been removed and re-added with a different interface index.
@@ -138,19 +145,22 @@ uint32_t RouteController::getRouteTableForInterfaceLocked(const char* interface)
     // if the same interface disconnects and then reconnects with a different interface ID
     // when the reconnect happens the interface will not be in the map, and the code will
     // determine the new routing table from the interface ID, below.
+    //
+    // sInterfaceToTable stores the *global* routing table for the interface, and the local table is
+    // "global table - ROUTE_TABLE_OFFSET_FROM_INDEX + ROUTE_TABLE_OFFSET_FROM_INDEX_FOR_LOCAL"
     auto iter = sInterfaceToTable.find(interface);
     if (iter != sInterfaceToTable.end()) {
-        return iter->second;
+        return getRouteTableIndexFromGlobalRouteTableIndex(iter->second, local);
     }
 
-    uint32_t index = if_nametoindex(interface);
+    uint32_t index = RouteController::ifNameToIndexFunction(interface);
     if (index == 0) {
         ALOGE("cannot find interface %s: %s", interface, strerror(errno));
         return RT_TABLE_UNSPEC;
     }
     index += RouteController::ROUTE_TABLE_OFFSET_FROM_INDEX;
     sInterfaceToTable[interface] = index;
-    return index;
+    return getRouteTableIndexFromGlobalRouteTableIndex(index, local);
 }
 
 uint32_t RouteController::getIfIndex(const char* interface) {
@@ -175,9 +185,9 @@ uint32_t RouteController::getIfIndex(const char* interface) {
     return ifindex - ROUTE_TABLE_OFFSET_FROM_INDEX;
 }
 
-uint32_t RouteController::getRouteTableForInterface(const char* interface) {
+uint32_t RouteController::getRouteTableForInterface(const char* interface, bool local) {
     std::lock_guard lock(sInterfaceToTableLock);
-    return getRouteTableForInterfaceLocked(interface);
+    return getRouteTableForInterfaceLocked(interface, local);
 }
 
 void addTableName(uint32_t table, const std::string& name, std::string* contents) {
@@ -201,8 +211,13 @@ void RouteController::updateTableNamesFile() {
     addTableName(ROUTE_TABLE_LEGACY_SYSTEM,  ROUTE_TABLE_NAME_LEGACY_SYSTEM,  &contents);
 
     std::lock_guard lock(sInterfaceToTableLock);
-    for (const auto& entry : sInterfaceToTable) {
-        addTableName(entry.second, entry.first, &contents);
+    for (const auto& [ifName, ifIndex] : sInterfaceToTable) {
+        addTableName(ifIndex, ifName, &contents);
+        // Add table for the local route of the network. It's expected to be used for excluding the
+        // local traffic in the VPN network.
+        // Start from ROUTE_TABLE_OFFSET_FROM_INDEX_FOR_LOCAL plus with the interface table index.
+        uint32_t offset = ROUTE_TABLE_OFFSET_FROM_INDEX_FOR_LOCAL - ROUTE_TABLE_OFFSET_FROM_INDEX;
+        addTableName(offset + ifIndex, ifName + INTERFACE_LOCAL_SUFFIX, &contents);
     }
 
     if (!WriteStringToFile(contents, RT_TABLES_PATH, RT_TABLES_MODE, AID_SYSTEM, AID_WIFI)) {
@@ -388,7 +403,8 @@ int modifyIpRoute(uint16_t action, uint16_t flags, uint32_t table, const char* i
     } else {
         // If an interface was specified, find the ifindex.
         if (interface != OIF_NONE) {
-            ifindex = if_nametoindex(interface);
+            ifindex = RouteController::ifNameToIndexFunction(interface);
+
             if (!ifindex) {
                 ALOGE("cannot find interface %s", interface);
                 return -ENODEV;
@@ -491,7 +507,8 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
 // have, if they are subject to this VPN, their traffic has to go through it. Allows the traffic to
 // bypass the VPN if the protectedFromVpn bit is set.
 [[nodiscard]] static int modifyVpnUidRangeRule(uint32_t table, uid_t uidStart, uid_t uidEnd,
-                                               int32_t subPriority, bool secure, bool add) {
+                                               int32_t subPriority, bool secure, bool add,
+                                               bool excludeLocalRoutes) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -503,7 +520,8 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
     if (secure) {
         priority = RULE_PRIORITY_SECURE_VPN;
     } else {
-        priority = RULE_PRIORITY_BYPASSABLE_VPN;
+        priority = excludeLocalRoutes ? RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION
+                                      : RULE_PRIORITY_BYPASSABLE_VPN_NO_LOCAL_EXCLUSION;
 
         fwmark.explicitlySelected = false;
         mask.explicitlySelected = true;
@@ -519,7 +537,7 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
 // This is needed for DnsProxyListener to correctly resolve a request for a user who is in the
 // target set, but where the DnsProxyListener itself is not.
 [[nodiscard]] static int modifyVpnSystemPermissionRule(unsigned netId, uint32_t table, bool secure,
-                                                       bool add) {
+                                                       bool add, bool excludeLocalRoutes) {
     Fwmark fwmark;
     Fwmark mask;
 
@@ -529,7 +547,14 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
     fwmark.permission = PERMISSION_SYSTEM;
     mask.permission = PERMISSION_SYSTEM;
 
-    uint32_t priority = secure ? RULE_PRIORITY_SECURE_VPN : RULE_PRIORITY_BYPASSABLE_VPN;
+    uint32_t priority;
+
+    if (secure) {
+        priority = RULE_PRIORITY_SECURE_VPN;
+    } else {
+        priority = excludeLocalRoutes ? RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION
+                                      : RULE_PRIORITY_BYPASSABLE_VPN_NO_LOCAL_EXCLUSION;
+    }
 
     return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, priority, table, fwmark.intValue,
                         mask.intValue);
@@ -614,6 +639,72 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
                         INVALID_UID);
 }
 
+int RouteController::modifyVpnLocalExclusionRule(bool add, const char* physicalInterface) {
+    uint32_t table = getRouteTableForInterface(physicalInterface, true /* local */);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    fwmark.permission = PERMISSION_NONE;
+    mask.permission = PERMISSION_NONE;
+
+    if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_LOCAL_ROUTES, table,
+                               fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE, INVALID_UID,
+                               INVALID_UID)) {
+        return ret;
+    }
+    return modifyVpnLocalExclusionRoutes(add, physicalInterface);
+}
+
+// TODO: Update the local exclusion routes based on what actual subnet the network is.
+int RouteController::modifyVpnLocalExclusionRoutes(bool add, const char* interface) {
+    for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V4); ++i) {
+        if (int ret = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V4[i])) {
+            // Routes are updated regardless of subnet. The destinations may be unreachable and
+            // cause EACCES error. This may happen now so ignore to not to cause an error.
+            if (ret != -EACCES) {
+                return ret;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V6); ++i) {
+        if (int ret = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V6[i])) {
+            // Routes are updated regardless of subnet. The destinations may be unreachable and
+            // cause EACCES error. This may happen now so ignore to not to cause an error.
+            if (ret != -EACCES) {
+                return ret;
+            }
+        }
+    }
+    return 0;
+}
+
+int RouteController::modifyVpnLocalExclusionRoute(bool add, const char* interface,
+                                                  const char* destination) {
+    uint32_t table = getRouteTableForInterface(interface, true /* local */);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    if (int ret = modifyIpRoute(add ? RTM_NEWROUTE : RTM_DELROUTE,
+                                add ? NETLINK_ROUTE_CREATE_FLAGS : NETLINK_REQUEST_FLAGS, table,
+                                interface, destination, nullptr, 0 /* mtu */, 0 /* priority */)) {
+        // Trying to delete a route that already deleted shouldn't cause an error.
+        if (add || ret != -ESRCH) {
+            return ret;
+        }
+    }
+
+    return 0;
+}
+
 // A rule to enable split tunnel VPNs.
 //
 // If a packet with a VPN's netId doesn't find a route in the VPN's routing table, it's allowed to
@@ -621,7 +712,7 @@ int modifyIncomingPacketMark(unsigned netId, const char* interface, Permission p
 int RouteController::modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
                                               const char* physicalInterface,
                                               Permission permission) {
-    uint32_t table = getRouteTableForInterface(physicalInterface);
+    uint32_t table = getRouteTableForInterface(physicalInterface, false /* local */);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
@@ -669,7 +760,7 @@ int RouteController::modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId
 [[nodiscard]] static int addLocalNetworkRules(unsigned localNetId) {
     if (int ret = modifyExplicitNetworkRule(localNetId, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
                                             INVALID_UID, INVALID_UID,
-                                            UidRanges::DEFAULT_SUB_PRIORITY, ACTION_ADD)) {
+                                            UidRanges::SUB_PRIORITY_HIGHEST, ACTION_ADD)) {
         return ret;
     }
 
@@ -686,7 +777,7 @@ int RouteController::modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId
 /* static */
 int RouteController::configureDummyNetwork() {
     const char *interface = DummyNetwork::INTERFACE_NAME;
-    uint32_t table = getRouteTableForInterface(interface);
+    uint32_t table = getRouteTableForInterface(interface, false /* local */);
     if (table == RT_TABLE_UNSPEC) {
         // getRouteTableForInterface has already logged an error.
         return -ESRCH;
@@ -701,7 +792,7 @@ int RouteController::configureDummyNetwork() {
     }
 
     if ((ret = modifyOutputInterfaceRules(interface, table, PERMISSION_NONE, INVALID_UID,
-                                          INVALID_UID, UidRanges::DEFAULT_SUB_PRIORITY,
+                                          INVALID_UID, UidRanges::SUB_PRIORITY_HIGHEST,
                                           ACTION_ADD))) {
         ALOGE("Can't create oif rules for %s: %s", interface, strerror(-ret));
         return ret;
@@ -735,7 +826,7 @@ int RouteController::configureDummyNetwork() {
     }
     maybeModifyQdiscClsact(interface, add);
     return modifyOutputInterfaceRules(interface, ROUTE_TABLE_LOCAL_NETWORK, PERMISSION_NONE,
-                                      INVALID_UID, INVALID_UID, UidRanges::DEFAULT_SUB_PRIORITY,
+                                      INVALID_UID, INVALID_UID, UidRanges::SUB_PRIORITY_HIGHEST,
                                       add);
 }
 
@@ -793,7 +884,7 @@ int RouteController::configureDummyNetwork() {
 int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface,
                                            const UidRangeMap& uidRangeMap, Permission permission,
                                            bool add, bool modifyNonUidBasedRules) {
-    uint32_t table = getRouteTableForInterface(interface);
+    uint32_t table = getRouteTableForInterface(interface, false /* local */);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
@@ -808,9 +899,13 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
                                                add, IMPLICIT)) {
                 return ret;
             }
-            if (int ret = modifyUidDefaultNetworkRule(table, range.start, range.stop, subPriority,
-                                                      add)) {
-                return ret;
+            // SUB_PRIORITY_NO_DEFAULT is "special" and does not require a
+            // default network rule, see UidRanges.h.
+            if (subPriority != UidRanges::SUB_PRIORITY_NO_DEFAULT) {
+                if (int ret = modifyUidDefaultNetworkRule(table, range.start, range.stop,
+                                                          subPriority, add)) {
+                    return ret;
+                }
             }
         }
     }
@@ -824,11 +919,11 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
         return ret;
     }
     if (int ret = modifyExplicitNetworkRule(netId, table, permission, INVALID_UID, INVALID_UID,
-                                            UidRanges::DEFAULT_SUB_PRIORITY, add)) {
+                                            UidRanges::SUB_PRIORITY_HIGHEST, add)) {
         return ret;
     }
     if (int ret = modifyOutputInterfaceRules(interface, table, permission, INVALID_UID, INVALID_UID,
-                                             UidRanges::DEFAULT_SUB_PRIORITY, add)) {
+                                             UidRanges::SUB_PRIORITY_HIGHEST, add)) {
         return ret;
     }
 
@@ -950,8 +1045,8 @@ int RouteController::modifyUnreachableNetwork(unsigned netId, const UidRangeMap&
 
 int RouteController::modifyVirtualNetwork(unsigned netId, const char* interface,
                                           const UidRangeMap& uidRangeMap, bool secure, bool add,
-                                          bool modifyNonUidBasedRules) {
-    uint32_t table = getRouteTableForInterface(interface);
+                                          bool modifyNonUidBasedRules, bool excludeLocalRoutes) {
+    uint32_t table = getRouteTableForInterface(interface, false /* false */);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
@@ -959,7 +1054,7 @@ int RouteController::modifyVirtualNetwork(unsigned netId, const char* interface,
     for (const auto& [subPriority, uidRanges] : uidRangeMap) {
         for (const UidRangeParcel& range : uidRanges.getRanges()) {
             if (int ret = modifyVpnUidRangeRule(table, range.start, range.stop, subPriority, secure,
-                                                add)) {
+                                                add, excludeLocalRoutes)) {
                 return ret;
             }
             if (int ret = modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, range.start,
@@ -980,11 +1075,12 @@ int RouteController::modifyVirtualNetwork(unsigned netId, const char* interface,
         if (int ret = modifyVpnOutputToLocalRule(interface, add)) {
             return ret;
         }
-        if (int ret = modifyVpnSystemPermissionRule(netId, table, secure, add)) {
+        if (int ret =
+                    modifyVpnSystemPermissionRule(netId, table, secure, add, excludeLocalRoutes)) {
             return ret;
         }
         return modifyExplicitNetworkRule(netId, table, PERMISSION_NONE, UID_ROOT, UID_ROOT,
-                                         UidRanges::DEFAULT_SUB_PRIORITY, add);
+                                         UidRanges::SUB_PRIORITY_HIGHEST, add);
     }
 
     return 0;
@@ -992,7 +1088,7 @@ int RouteController::modifyVirtualNetwork(unsigned netId, const char* interface,
 
 int RouteController::modifyDefaultNetwork(uint16_t action, const char* interface,
                                           Permission permission) {
-    uint32_t table = getRouteTableForInterface(interface);
+    uint32_t table = getRouteTableForInterface(interface, false /* local */);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
@@ -1012,7 +1108,7 @@ int RouteController::modifyDefaultNetwork(uint16_t action, const char* interface
 
 int RouteController::modifyTetheredNetwork(uint16_t action, const char* inputInterface,
                                            const char* outputInterface) {
-    uint32_t table = getRouteTableForInterface(outputInterface);
+    uint32_t table = getRouteTableForInterface(outputInterface, false /* local */);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
@@ -1029,7 +1125,7 @@ int RouteController::modifyRoute(uint16_t action, uint16_t flags, const char* in
     uint32_t table;
     switch (tableType) {
         case RouteController::INTERFACE: {
-            table = getRouteTableForInterface(interface);
+            table = getRouteTableForInterface(interface, false /* local */);
             if (table == RT_TABLE_UNSPEC) {
                 return -ESRCH;
             }
@@ -1067,7 +1163,7 @@ static void maybeModifyQdiscClsact(const char* interface, bool add) {
     if (StartsWith(interface, "v4-") && add) return;
 
     // The interface may have already gone away in the delete case.
-    uint32_t ifindex = if_nametoindex(interface);
+    uint32_t ifindex = RouteController::ifNameToIndexFunction(interface);
     if (!ifindex) {
         ALOGE("cannot find interface %s", interface);
         return;
@@ -1126,11 +1222,22 @@ int RouteController::flushRoutes(uint32_t table) {
     return rtNetlinkFlush(RTM_GETROUTE, RTM_DELROUTE, "routes", shouldDelete);
 }
 
-// Returns 0 on success or negative errno on failure.
 int RouteController::flushRoutes(const char* interface) {
+    // Try to flush both local and global routing tables.
+    //
+    // Flush local first because flush global routing tables may erase the sInterfaceToTable map.
+    // Then the fake <iface>_local interface will be unable to find the index because the local
+    // interface depends physical interface to find the correct index.
+    int ret = flushRoutes(interface, true);
+    ret |= flushRoutes(interface, false);
+    return ret;
+}
+
+// Returns 0 on success or negative errno on failure.
+int RouteController::flushRoutes(const char* interface, bool local) {
     std::lock_guard lock(sInterfaceToTableLock);
 
-    uint32_t table = getRouteTableForInterfaceLocked(interface);
+    uint32_t table = getRouteTableForInterfaceLocked(interface, local);
     if (table == RT_TABLE_UNSPEC) {
         return -ESRCH;
     }
@@ -1139,7 +1246,8 @@ int RouteController::flushRoutes(const char* interface) {
 
     // If we failed to flush routes, the caller may elect to keep this interface around, so keep
     // track of its name.
-    if (ret == 0) {
+    // Skip erasing local fake interface since it does not exist in sInterfaceToTable.
+    if (ret == 0 && !local) {
         sInterfaceToTable.erase(interface);
     }
 
@@ -1191,6 +1299,11 @@ int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* i
                                         MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
+    // TODO: Consider to remove regular table if adding local table failed.
+    if (int ret = modifyVpnLocalExclusionRule(true, interface)) {
+        return ret;
+    }
+
     maybeModifyQdiscClsact(interface, ACTION_ADD);
     updateTableNamesFile();
     return 0;
@@ -1203,21 +1316,28 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
                                         MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
-    if (int ret = flushRoutes(interface)) {
+
+    int ret = modifyVpnLocalExclusionRule(false, interface);
+    // Always perform flushRoute even if removing local exclusion rules failed.
+    ret |= flushRoutes(interface);
+    if (ret) {
         return ret;
     }
+
     if (int ret = clearTetheringRules(interface)) {
         return ret;
     }
+
     maybeModifyQdiscClsact(interface, ACTION_DEL);
     updateTableNamesFile();
     return 0;
 }
 
 int RouteController::addInterfaceToVirtualNetwork(unsigned netId, const char* interface,
-                                                  bool secure, const UidRangeMap& uidRangeMap) {
+                                                  bool secure, const UidRangeMap& uidRangeMap,
+                                                  bool excludeLocalRoutes) {
     if (int ret = modifyVirtualNetwork(netId, interface, uidRangeMap, secure, ACTION_ADD,
-                                       MODIFY_NON_UID_BASED_RULES)) {
+                                       MODIFY_NON_UID_BASED_RULES, excludeLocalRoutes)) {
         return ret;
     }
     updateTableNamesFile();
@@ -1225,10 +1345,10 @@ int RouteController::addInterfaceToVirtualNetwork(unsigned netId, const char* in
 }
 
 int RouteController::removeInterfaceFromVirtualNetwork(unsigned netId, const char* interface,
-                                                       bool secure,
-                                                       const UidRangeMap& uidRangeMap) {
+                                                       bool secure, const UidRangeMap& uidRangeMap,
+                                                       bool excludeLocalRoutes) {
     if (int ret = modifyVirtualNetwork(netId, interface, uidRangeMap, secure, ACTION_DEL,
-                                       MODIFY_NON_UID_BASED_RULES)) {
+                                       MODIFY_NON_UID_BASED_RULES, excludeLocalRoutes)) {
         return ret;
     }
     if (int ret = flushRoutes(interface)) {
@@ -1262,15 +1382,17 @@ int RouteController::removeUsersFromRejectNonSecureNetworkRule(const UidRanges& 
 }
 
 int RouteController::addUsersToVirtualNetwork(unsigned netId, const char* interface, bool secure,
-                                              const UidRangeMap& uidRangeMap) {
+                                              const UidRangeMap& uidRangeMap,
+                                              bool excludeLocalRoutes) {
     return modifyVirtualNetwork(netId, interface, uidRangeMap, secure, ACTION_ADD,
-                                !MODIFY_NON_UID_BASED_RULES);
+                                !MODIFY_NON_UID_BASED_RULES, excludeLocalRoutes);
 }
 
 int RouteController::removeUsersFromVirtualNetwork(unsigned netId, const char* interface,
-                                                   bool secure, const UidRangeMap& uidRangeMap) {
+                                                   bool secure, const UidRangeMap& uidRangeMap,
+                                                   bool excludeLocalRoutes) {
     return modifyVirtualNetwork(netId, interface, uidRangeMap, secure, ACTION_DEL,
-                                !MODIFY_NON_UID_BASED_RULES);
+                                !MODIFY_NON_UID_BASED_RULES, excludeLocalRoutes);
 }
 
 int RouteController::addInterfaceToDefaultNetwork(const char* interface, Permission permission) {

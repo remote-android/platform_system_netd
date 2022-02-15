@@ -30,11 +30,11 @@
 namespace android::net {
 
 // clang-format off
-constexpr int32_t RULE_PRIORITY_VPN_OVERRIDE_SYSTEM     = 10000;
-constexpr int32_t RULE_PRIORITY_VPN_OVERRIDE_OIF        = 11000;
-constexpr int32_t RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL     = 12000;
-constexpr int32_t RULE_PRIORITY_SECURE_VPN              = 13000;
-constexpr int32_t RULE_PRIORITY_PROHIBIT_NON_VPN        = 14000;
+constexpr int32_t RULE_PRIORITY_VPN_OVERRIDE_SYSTEM               = 10000;
+constexpr int32_t RULE_PRIORITY_VPN_OVERRIDE_OIF                  = 11000;
+constexpr int32_t RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL               = 12000;
+constexpr int32_t RULE_PRIORITY_SECURE_VPN                        = 13000;
+constexpr int32_t RULE_PRIORITY_PROHIBIT_NON_VPN                  = 14000;
 // Rules used when applications explicitly select a network that they have permission to use only
 // because they are in the list of UID ranges for that network.
 //
@@ -42,21 +42,23 @@ constexpr int32_t RULE_PRIORITY_PROHIBIT_NON_VPN        = 14000;
 // not have the necessary permission bits in the fwmark. We cannot just give any socket on any of
 // these networks the permission bits, because if the UID that created the socket loses access to
 // the network, then the socket must not match any rule that selects that network.
-constexpr int32_t RULE_PRIORITY_UID_EXPLICIT_NETWORK    = 15000;
-constexpr int32_t RULE_PRIORITY_EXPLICIT_NETWORK        = 16000;
-constexpr int32_t RULE_PRIORITY_OUTPUT_INTERFACE        = 17000;
-constexpr int32_t RULE_PRIORITY_LEGACY_SYSTEM           = 18000;
-constexpr int32_t RULE_PRIORITY_LEGACY_NETWORK          = 19000;
-constexpr int32_t RULE_PRIORITY_LOCAL_NETWORK           = 20000;
-constexpr int32_t RULE_PRIORITY_TETHERING               = 21000;
+constexpr int32_t RULE_PRIORITY_UID_EXPLICIT_NETWORK              = 15000;
+constexpr int32_t RULE_PRIORITY_EXPLICIT_NETWORK                  = 16000;
+constexpr int32_t RULE_PRIORITY_OUTPUT_INTERFACE                  = 17000;
+constexpr int32_t RULE_PRIORITY_LEGACY_SYSTEM                     = 18000;
+constexpr int32_t RULE_PRIORITY_LEGACY_NETWORK                    = 19000;
+constexpr int32_t RULE_PRIORITY_LOCAL_NETWORK                     = 20000;
+constexpr int32_t RULE_PRIORITY_TETHERING                         = 21000;
 // Implicit rules for sockets that connected on a given network because the network was the default
 // network for the UID.
-constexpr int32_t RULE_PRIORITY_UID_IMPLICIT_NETWORK    = 22000;
-constexpr int32_t RULE_PRIORITY_IMPLICIT_NETWORK        = 23000;
-constexpr int32_t RULE_PRIORITY_BYPASSABLE_VPN          = 24000;
-// reserved for RULE_PRIORITY_UID_VPN_FALLTHROUGH    = 25000;
-constexpr int32_t RULE_PRIORITY_VPN_FALLTHROUGH         = 26000;
-constexpr int32_t RULE_PRIORITY_UID_DEFAULT_NETWORK     = 27000;
+constexpr int32_t RULE_PRIORITY_UID_IMPLICIT_NETWORK              = 22000;
+constexpr int32_t RULE_PRIORITY_IMPLICIT_NETWORK                  = 23000;
+constexpr int32_t RULE_PRIORITY_BYPASSABLE_VPN_NO_LOCAL_EXCLUSION = 24000;
+// Rules used for excluding local route in the VPN network.
+constexpr int32_t RULE_PRIORITY_LOCAL_ROUTES                      = 25000;
+constexpr int32_t RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION    = 26000;
+constexpr int32_t RULE_PRIORITY_VPN_FALLTHROUGH                   = 27000;
+constexpr int32_t RULE_PRIORITY_UID_DEFAULT_NETWORK               = 28000;
 // Rule used when framework wants to disable default network from specified applications. There will
 // be a small interval the same uid range exists in both UID_DEFAULT_UNREACHABLE and
 // UID_DEFAULT_NETWORK when framework is switching user preferences.
@@ -71,10 +73,17 @@ constexpr int32_t RULE_PRIORITY_UID_DEFAULT_NETWORK     = 27000;
 // The priority is lower than UID_DEFAULT_NETWORK. Otherwise, the app will be told by
 // ConnectivityService that it has a network in step 1 of the second case. But if it tries to use
 // the network, it will not work. That will potentially cause a user-visible error.
-constexpr int32_t RULE_PRIORITY_UID_DEFAULT_UNREACHABLE = 28000;
-constexpr int32_t RULE_PRIORITY_DEFAULT_NETWORK         = 29000;
-constexpr int32_t RULE_PRIORITY_UNREACHABLE             = 32000;
+constexpr int32_t RULE_PRIORITY_UID_DEFAULT_UNREACHABLE           = 29000;
+constexpr int32_t RULE_PRIORITY_DEFAULT_NETWORK                   = 30000;
+constexpr int32_t RULE_PRIORITY_UNREACHABLE                       = 32000;
 // clang-format on
+
+constexpr const char* LOCAL_EXCLUSION_ROUTES_V4[] = {
+        "169.254.0.0/16",  // Link-local, RFC3927
+};
+constexpr const char* LOCAL_EXCLUSION_ROUTES_V6[] = {
+        "fe80::/10"  // Link-local, RFC-4291
+};
 
 class UidRanges;
 
@@ -89,7 +98,11 @@ public:
     };
 
     static const int ROUTE_TABLE_OFFSET_FROM_INDEX = 1000;
+    // Offset for the table of virtual local network created from the physical interface.
+    static const int ROUTE_TABLE_OFFSET_FROM_INDEX_FOR_LOCAL = 1000000000;
 
+    static constexpr const char* INTERFACE_LOCAL_SUFFIX = "_local";
+    static constexpr const char* RT_TABLES_PATH = "/data/misc/net/rt_tables";
     static const char* const LOCAL_MANGLE_INPUT;
 
     [[nodiscard]] static int Init(unsigned localNetId);
@@ -116,20 +129,24 @@ public:
 
     [[nodiscard]] static int addInterfaceToVirtualNetwork(unsigned netId, const char* interface,
                                                           bool secure,
-                                                          const UidRangeMap& uidRangeMap);
+                                                          const UidRangeMap& uidRangeMap,
+                                                          bool excludeLocalRoutes);
     [[nodiscard]] static int removeInterfaceFromVirtualNetwork(unsigned netId,
                                                                const char* interface, bool secure,
-                                                               const UidRangeMap& uidRangeMap);
+                                                               const UidRangeMap& uidRangeMap,
+                                                               bool excludeLocalRoutes);
 
     [[nodiscard]] static int modifyPhysicalNetworkPermission(unsigned netId, const char* interface,
                                                              Permission oldPermission,
                                                              Permission newPermission);
 
     [[nodiscard]] static int addUsersToVirtualNetwork(unsigned netId, const char* interface,
-                                                      bool secure, const UidRangeMap& uidRangeMap);
+                                                      bool secure, const UidRangeMap& uidRangeMap,
+                                                      bool excludeLocalRoutes);
     [[nodiscard]] static int removeUsersFromVirtualNetwork(unsigned netId, const char* interface,
                                                            bool secure,
-                                                           const UidRangeMap& uidRangeMap);
+                                                           const UidRangeMap& uidRangeMap,
+                                                           bool excludeLocalRoutes);
 
     [[nodiscard]] static int addUsersToRejectNonSecureNetworkRule(const UidRanges& uidRanges);
     [[nodiscard]] static int removeUsersFromRejectNonSecureNetworkRule(const UidRanges& uidRanges);
@@ -176,8 +193,9 @@ public:
     // For testing.
     static int (*iptablesRestoreCommandFunction)(IptablesTarget, const std::string&,
                                                  const std::string&, std::string *);
+    static uint32_t (*ifNameToIndexFunction)(const char*);
 
-private:
+  private:
     friend class RouteControllerTest;
 
     static std::mutex sInterfaceToTableLock;
@@ -185,10 +203,13 @@ private:
 
     static int configureDummyNetwork();
     [[nodiscard]] static int flushRoutes(const char* interface) EXCLUDES(sInterfaceToTableLock);
+    [[nodiscard]] static int flushRoutes(const char* interface, bool local)
+            EXCLUDES(sInterfaceToTableLock);
     [[nodiscard]] static int flushRoutes(uint32_t table);
-    static uint32_t getRouteTableForInterfaceLocked(const char* interface)
+    static uint32_t getRouteTableForInterfaceLocked(const char* interface, bool local)
             REQUIRES(sInterfaceToTableLock);
-    static uint32_t getRouteTableForInterface(const char *interface) EXCLUDES(sInterfaceToTableLock);
+    static uint32_t getRouteTableForInterface(const char* interface, bool local)
+            EXCLUDES(sInterfaceToTableLock);
     static int modifyDefaultNetwork(uint16_t action, const char* interface, Permission permission);
     static int modifyPhysicalNetwork(unsigned netId, const char* interface,
                                      const UidRangeMap& uidRangeMap, Permission permission,
@@ -203,8 +224,12 @@ private:
                                         const char* physicalInterface, Permission permission);
     static int modifyVirtualNetwork(unsigned netId, const char* interface,
                                     const UidRangeMap& uidRangeMap, bool secure, bool add,
-                                    bool modifyNonUidBasedRules);
+                                    bool modifyNonUidBasedRules, bool excludeLocalRoutes);
     static void updateTableNamesFile() EXCLUDES(sInterfaceToTableLock);
+    static int modifyVpnLocalExclusionRule(bool add, const char* physicalInterface);
+    static int modifyVpnLocalExclusionRoutes(bool add, const char* interface);
+    static int modifyVpnLocalExclusionRoute(bool add, const char* interface,
+                                            const char* destination);
 };
 
 // Public because they are called by by RouteControllerTest.cpp.
