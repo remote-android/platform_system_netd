@@ -68,7 +68,6 @@
 #include "netdutils/Syscalls.h"
 #include "netdutils/Utils.h"
 
-using android::net::INetd;
 using android::netdutils::DumpWriter;
 using android::netdutils::Fd;
 using android::netdutils::getIfaceNames;
