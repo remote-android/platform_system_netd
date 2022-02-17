@@ -183,7 +183,7 @@ int main() {
         exit(1);
     }
 
-    FwmarkServer fwmarkServer(&gCtls->netCtrl, &gCtls->eventReporter, &gCtls->trafficCtrl);
+    FwmarkServer fwmarkServer(&gCtls->netCtrl, &gCtls->eventReporter);
     if (fwmarkServer.startListener()) {
         ALOGE("Unable to start FwmarkServer (%s)", strerror(errno));
         exit(1);
