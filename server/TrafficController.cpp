@@ -66,7 +66,6 @@ using netdutils::sSyscalls;
 using netdutils::Status;
 using netdutils::statusFromErrno;
 using netdutils::StatusOr;
-using netdutils::status::ok;
 
 constexpr int kSockDiagMsgType = SOCK_DIAG_BY_FAMILY;
 constexpr int kSockDiagDoneMsgType = NLMSG_DONE;
