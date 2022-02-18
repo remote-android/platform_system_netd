@@ -43,7 +43,6 @@
 using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
-using android::net::UidRangeParcel;
 
 namespace android::net {
 

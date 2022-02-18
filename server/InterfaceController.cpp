@@ -44,8 +44,6 @@ using android::base::ReadFileToString;
 using android::base::StringPrintf;
 using android::base::Trim;
 using android::base::WriteStringToFile;
-using android::net::INetd;
-using android::net::RouteController;
 using android::netdutils::isOk;
 using android::netdutils::makeSlice;
 using android::netdutils::sSyscalls;
