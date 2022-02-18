@@ -36,7 +36,6 @@
 
 #include "NetdUpdatablePublic.h"
 
-using android::String16;
 using android::base::ReceiveFileDescriptorVector;
 using android::base::unique_fd;
 using android::net::metrics::INetdEventListener;
