@@ -211,7 +211,6 @@ cc_test {
         "SockDiagTest.cpp",
         "StrictControllerTest.cpp",
         "TetherControllerTest.cpp",
-        "TrafficControllerTest.cpp",
         "XfrmControllerTest.cpp",
         "WakeupControllerTest.cpp",
     ],
