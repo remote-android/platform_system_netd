@@ -32,11 +32,9 @@
 #include "FwmarkCommand.h"
 #include "NetdConstants.h"
 #include "NetworkController.h"
-#include "TrafficController.h"
 
 #include "NetdUpdatablePublic.h"
 
-using android::String16;
 using android::base::ReceiveFileDescriptorVector;
 using android::base::unique_fd;
 using android::net::metrics::INetdEventListener;
@@ -64,12 +62,10 @@ bool isSystemServer(SocketClient* client) {
     return ret;
 }
 
-FwmarkServer::FwmarkServer(NetworkController* networkController, EventReporter* eventReporter,
-                           TrafficController* trafficCtrl)
+FwmarkServer::FwmarkServer(NetworkController* networkController, EventReporter* eventReporter)
     : SocketListener(SOCKET_NAME, true),
       mNetworkController(networkController),
       mEventReporter(eventReporter),
-      mTrafficCtrl(trafficCtrl),
       mRedirectSocketCalls(
               android::base::GetBoolProperty("ro.vendor.redirect_socket_calls", false)) {}
 
@@ -134,14 +130,6 @@ int FwmarkServer::processClient(SocketClient* client, int* socketFd) {
             return -EPERM;
         }
         return mNetworkController->checkUserNetworkAccess(command.uid, command.netId);
-    }
-
-    if (command.cmdId == FwmarkCommand::SET_COUNTERSET) {
-        return mTrafficCtrl->setCounterSet(command.trafficCtrlInfo, command.uid, client->getUid());
-    }
-
-    if (command.cmdId == FwmarkCommand::DELETE_TAGDATA) {
-        return mTrafficCtrl->deleteTagData(command.trafficCtrlInfo, command.uid, client->getUid());
     }
 
     if (received_fds.size() != 1) {
