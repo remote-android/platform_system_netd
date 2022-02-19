@@ -53,15 +53,12 @@
 
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
-using android::net::NativeNetworkType;
-using android::net::TetherOffloadRuleParcel;
 using android::net::TetherStatsParcel;
 using android::net::UidRangeParcel;
 using android::net::netd::aidl::NativeUidRangeConfig;
 using android::netdutils::DumpWriter;
 using android::netdutils::getIfaceNames;
 using android::netdutils::ScopedIndent;
-using android::netdutils::Status;
 using android::os::ParcelFileDescriptor;
 
 namespace android {
