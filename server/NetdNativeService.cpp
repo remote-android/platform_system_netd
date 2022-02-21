@@ -210,19 +210,9 @@ status_t NetdNativeService::dump(int fd, const Vector<String16> &args) {
       return NO_ERROR;
     }
 
-    if (!args.isEmpty() && args[0] == TrafficController::DUMP_KEYWORD) {
-        dw.blankline();
-        gCtls->trafficCtrl.dump(dw, true);
-        dw.blankline();
-        return NO_ERROR;
-    }
-
     process::dump(dw);
     dw.blankline();
     gCtls->netCtrl.dump(dw);
-    dw.blankline();
-
-    gCtls->trafficCtrl.dump(dw, false);
     dw.blankline();
 
     gCtls->xfrmCtrl.dump(dw);
