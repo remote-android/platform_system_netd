@@ -29,7 +29,6 @@
 #include "StrictController.h"
 #include "TcpSocketMonitor.h"
 #include "TetherController.h"
-#include "TrafficController.h"
 #include "WakeupController.h"
 #include "XfrmController.h"
 #include "netdutils/Log.h"
@@ -53,7 +52,6 @@ class Controllers {
     IptablesRestoreController iptablesRestoreCtrl;
     WakeupController wakeupCtrl;
     XfrmController xfrmCtrl;
-    TrafficController trafficCtrl;
     TcpSocketMonitor tcpSocketMonitor;
 
     void init();
