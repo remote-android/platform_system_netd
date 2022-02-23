@@ -80,6 +80,7 @@ cc_test {
         ":netd_integration_test_shared",
         "binder_test.cpp",
         "bpf_base_test.cpp",
+        "kernel_test.cpp",
         "netd_client_test.cpp",
         "netd_test.cpp",
     ],
@@ -97,6 +98,7 @@ cc_test {
         "libssl",
         "libsysutils",
         "libutils",
+        "libvintf",
     ],
     static_libs: [
         "libcap",
