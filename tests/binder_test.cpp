@@ -3544,6 +3544,9 @@ void expectVpnLocalExclusionRouteExists(const std::string& ifName) {
                 StringPrintf("%s dev %s proto static scope link", dst, ifName.c_str());
         EXPECT_TRUE(ipRouteExists(IP_RULE_V4, vpnLocalExclusionRoute, tableName));
     }
+    // expect no other rule
+    std::vector<std::string> routes = listIpRoutes(IP_RULE_V4, tableName.c_str());
+    EXPECT_EQ(routes.size(), ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V4));
 
     for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V6); ++i) {
         const auto& dst = LOCAL_EXCLUSION_ROUTES_V6[i];
@@ -3551,6 +3554,9 @@ void expectVpnLocalExclusionRouteExists(const std::string& ifName) {
                 StringPrintf("%s dev %s proto static", dst, ifName.c_str());
         EXPECT_TRUE(ipRouteExists(IP_RULE_V6, vpnLocalExclusionRoute, tableName));
     }
+    // expect no other rule
+    routes = listIpRoutes(IP_RULE_V6, tableName.c_str());
+    EXPECT_EQ(routes.size(), ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V6));
 }
 
 void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable, uid_t uid,
