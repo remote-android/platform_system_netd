@@ -194,6 +194,11 @@ cc_test {
         "system/netd/tests",
     ],
     header_libs: ["bpf_connectivity_headers"],
+    tidy_timeout_srcs: [
+        "BandwidthControllerTest.cpp",
+        "InterfaceControllerTest.cpp",
+        "XfrmControllerTest.cpp",
+    ],
     srcs: [
         "BandwidthControllerTest.cpp",
         "ClatdControllerTest.cpp",
