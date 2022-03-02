@@ -1312,6 +1312,63 @@ namespace {
 constexpr char STRICT_OUTPUT[] = "st_OUTPUT";
 constexpr char STRICT_CLEAR_CAUGHT[] = "st_clear_caught";
 
+// Output looks like this:
+//
+// IPv4:
+//
+// throw        dst                         proto static    scope link
+// unreachable  dst                         proto static    scope link
+//              dst via nextHop dev ifName  proto static
+//              dst             dev ifName  proto static    scope link
+//
+// IPv6:
+//
+// throw        dst             dev lo      proto static    metric 1024
+// unreachable  dst             dev lo      proto static    metric 1024
+//              dst via nextHop dev ifName  proto static    metric 1024
+//              dst             dev ifName  proto static    metric 1024
+std::string ipRoutePrefix(const std::string& ifName, const std::string& dst,
+                          const std::string& nextHop) {
+    std::string prefixString;
+
+    bool isThrow = nextHop == "throw";
+    bool isUnreachable = nextHop == "unreachable";
+    bool isDefault = (dst == "0.0.0.0/0" || dst == "::/0");
+    bool isIPv6 = dst.find(':') != std::string::npos;
+    bool isThrowOrUnreachable = isThrow || isUnreachable;
+
+    if (isThrowOrUnreachable) {
+        prefixString += nextHop + " ";
+    }
+
+    prefixString += isDefault ? "default" : dst;
+
+    if (!nextHop.empty() && !isThrowOrUnreachable) {
+        prefixString += " via " + nextHop;
+    }
+
+    if (isThrowOrUnreachable) {
+        if (isIPv6) {
+            prefixString += " dev lo";
+        }
+    } else {
+        prefixString += " dev " + ifName;
+    }
+
+    prefixString += " proto static";
+
+    // IPv6 routes report the metric, IPv4 routes report the scope.
+    if (isIPv6) {
+        prefixString += " metric 1024";
+    } else {
+        if (nextHop.empty() || isThrowOrUnreachable) {
+            prefixString += " scope link";
+        }
+    }
+
+    return prefixString;
+}
+
 void expectStrictSetUidAccept(const int uid) {
     std::string uidRule = StringPrintf("owner UID match %u", uid);
     std::string perUidChain = StringPrintf("st_clear_caught_%u", uid);
@@ -1341,6 +1398,163 @@ void expectStrictSetUidReject(const int uid) {
         EXPECT_TRUE(iptablesRuleExists(binary, STRICT_OUTPUT, uidRule));
         EXPECT_TRUE(iptablesRuleExists(binary, STRICT_CLEAR_CAUGHT, uidRule));
         EXPECT_TRUE(iptablesRuleExists(binary, perUidChain.c_str(), rejectRule));
+    }
+}
+
+bool ipRuleExists(const char* ipVersion, const std::string& ipRule) {
+    std::vector<std::string> rules = listIpRules(ipVersion);
+    for (const auto& rule : rules) {
+        if (rule.find(ipRule) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<std::string> ipRouteSubstrings(const std::string& ifName, const std::string& dst,
+                                           const std::string& nextHop, const std::string& mtu) {
+    std::vector<std::string> routeSubstrings;
+
+    routeSubstrings.push_back(ipRoutePrefix(ifName, dst, nextHop));
+
+    if (!mtu.empty()) {
+        // Add separate substring to match mtu value.
+        // This is needed because on some devices "error -11"/"error -113" appears between ip prefix
+        // and mtu for throw/unreachable routes.
+        routeSubstrings.push_back("mtu " + mtu);
+    }
+
+    return routeSubstrings;
+}
+
+void expectNetworkRouteDoesNotExistWithMtu(const char* ipVersion, const std::string& ifName,
+                                           const std::string& dst, const std::string& nextHop,
+                                           const std::string& mtu, const char* table) {
+    std::vector<std::string> routeSubstrings = ipRouteSubstrings(ifName, dst, nextHop, mtu);
+    EXPECT_FALSE(ipRouteExists(ipVersion, table, routeSubstrings))
+            << "Found unexpected route [" << Join(routeSubstrings, ", ") << "] in table " << table;
+}
+
+void expectNetworkRouteExistsWithMtu(const char* ipVersion, const std::string& ifName,
+                                     const std::string& dst, const std::string& nextHop,
+                                     const std::string& mtu, const char* table) {
+    std::vector<std::string> routeSubstrings = ipRouteSubstrings(ifName, dst, nextHop, mtu);
+    EXPECT_TRUE(ipRouteExists(ipVersion, table, routeSubstrings))
+            << "Couldn't find route to " << dst << ": [" << Join(routeSubstrings, ", ")
+            << "] in table " << table;
+}
+
+bool ipRouteExists(const char* ipType, std::string& ipRoute, const std::string& tableName) {
+    std::vector<std::string> routes = listIpRoutes(ipType, tableName.c_str());
+    for (const auto& route : routes) {
+        if (route.find(ipRoute) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void expectVpnLocalExclusionRuleExists(const std::string& ifName) {
+    std::string tableName = std::string(ifName + "_local");
+    // Check if rule exists
+    std::string vpnLocalExclusionRule =
+            StringPrintf("%d:\tfrom all fwmark 0x0/0x10000 iif lo lookup %s",
+                         RULE_PRIORITY_LOCAL_ROUTES, tableName.c_str());
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_TRUE(ipRuleExists(ipVersion, vpnLocalExclusionRule));
+    }
+}
+
+void expectNetworkRouteExists(const char* ipVersion, const std::string& ifName,
+                              const std::string& dst, const std::string& nextHop,
+                              const char* table) {
+    expectNetworkRouteExistsWithMtu(ipVersion, ifName, dst, nextHop, "", table);
+}
+
+void expectNetworkRouteDoesNotExist(const char* ipVersion, const std::string& ifName,
+                                    const std::string& dst, const std::string& nextHop,
+                                    const char* table) {
+    expectNetworkRouteDoesNotExistWithMtu(ipVersion, ifName, dst, nextHop, "", table);
+}
+
+void expectNetworkDefaultIpRuleExists(const char* ifName) {
+    std::string networkDefaultRule =
+            StringPrintf("%u:\tfrom all fwmark 0x0/0xffff iif lo lookup %s",
+                         RULE_PRIORITY_DEFAULT_NETWORK, ifName);
+
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_TRUE(ipRuleExists(ipVersion, networkDefaultRule));
+    }
+}
+
+void expectNetworkDefaultIpRuleDoesNotExist() {
+    std::string networkDefaultRule =
+            StringPrintf("%u:\tfrom all fwmark 0x0/0xffff iif lo", RULE_PRIORITY_DEFAULT_NETWORK);
+
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_FALSE(ipRuleExists(ipVersion, networkDefaultRule));
+    }
+}
+
+void expectNetworkPermissionIpRuleExists(const char* ifName, int permission) {
+    std::string networkPermissionRule = "";
+    switch (permission) {
+        case INetd::PERMISSION_NONE:
+            networkPermissionRule =
+                    StringPrintf("%u:\tfrom all fwmark 0x1ffdd/0x1ffff iif lo lookup %s",
+                                 RULE_PRIORITY_EXPLICIT_NETWORK, ifName);
+            break;
+        case INetd::PERMISSION_NETWORK:
+            networkPermissionRule =
+                    StringPrintf("%u:\tfrom all fwmark 0x5ffdd/0x5ffff iif lo lookup %s",
+                                 RULE_PRIORITY_EXPLICIT_NETWORK, ifName);
+            break;
+        case INetd::PERMISSION_SYSTEM:
+            networkPermissionRule =
+                    StringPrintf("%u:\tfrom all fwmark 0xdffdd/0xdffff iif lo lookup %s",
+                                 RULE_PRIORITY_EXPLICIT_NETWORK, ifName);
+            break;
+    }
+
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        EXPECT_TRUE(ipRuleExists(ipVersion, networkPermissionRule));
+    }
+}
+
+// TODO: It is a duplicate function, need to remove it
+bool iptablesNetworkPermissionIptablesRuleExists(const char* binary, const char* chainName,
+                                                 const std::string& expectedInterface,
+                                                 const std::string& expectedRule,
+                                                 const char* table) {
+    std::vector<std::string> rules = listIptablesRuleByTable(binary, table, chainName);
+    for (const auto& rule : rules) {
+        if (rule.find(expectedInterface) != std::string::npos) {
+            if (rule.find(expectedRule) != std::string::npos) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void expectNetworkPermissionIptablesRuleExists(const char* ifName, int permission) {
+    static const char ROUTECTRL_INPUT[] = "routectrl_mangle_INPUT";
+    std::string networkIncomingPacketMarkRule = "";
+    switch (permission) {
+        case INetd::PERMISSION_NONE:
+            networkIncomingPacketMarkRule = "MARK xset 0x3ffdd/0xffefffff";
+            break;
+        case INetd::PERMISSION_NETWORK:
+            networkIncomingPacketMarkRule = "MARK xset 0x7ffdd/0xffefffff";
+            break;
+        case INetd::PERMISSION_SYSTEM:
+            networkIncomingPacketMarkRule = "MARK xset 0xfffdd/0xffefffff";
+            break;
+    }
+
+    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
+        EXPECT_TRUE(iptablesNetworkPermissionIptablesRuleExists(
+                binary, ROUTECTRL_INPUT, ifName, networkIncomingPacketMarkRule, MANGLE_TABLE));
     }
 }
 
@@ -1767,203 +1981,6 @@ TEST_F(NetdBinderTest, BandwidthSetGlobalAlert) {
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectBandwidthGlobalAlertRuleExists(testAlertBytes);
 }
-
-namespace {
-
-// Output looks like this:
-//
-// IPv4:
-//
-// throw        dst                         proto static    scope link
-// unreachable  dst                         proto static    scope link
-//              dst via nextHop dev ifName  proto static
-//              dst             dev ifName  proto static    scope link
-//
-// IPv6:
-//
-// throw        dst             dev lo      proto static    metric 1024
-// unreachable  dst             dev lo      proto static    metric 1024
-//              dst via nextHop dev ifName  proto static    metric 1024
-//              dst             dev ifName  proto static    metric 1024
-std::string ipRoutePrefix(const std::string& ifName, const std::string& dst,
-                          const std::string& nextHop) {
-    std::string prefixString;
-
-    bool isThrow = nextHop == "throw";
-    bool isUnreachable = nextHop == "unreachable";
-    bool isDefault = (dst == "0.0.0.0/0" || dst == "::/0");
-    bool isIPv6 = dst.find(':') != std::string::npos;
-    bool isThrowOrUnreachable = isThrow || isUnreachable;
-
-    if (isThrowOrUnreachable) {
-        prefixString += nextHop + " ";
-    }
-
-    prefixString += isDefault ? "default" : dst;
-
-    if (!nextHop.empty() && !isThrowOrUnreachable) {
-        prefixString += " via " + nextHop;
-    }
-
-    if (isThrowOrUnreachable) {
-        if (isIPv6) {
-            prefixString += " dev lo";
-        }
-    } else {
-        prefixString += " dev " + ifName;
-    }
-
-    prefixString += " proto static";
-
-    // IPv6 routes report the metric, IPv4 routes report the scope.
-    if (isIPv6) {
-        prefixString += " metric 1024";
-    } else {
-        if (nextHop.empty() || isThrowOrUnreachable) {
-            prefixString += " scope link";
-        }
-    }
-
-    return prefixString;
-}
-
-std::vector<std::string> ipRouteSubstrings(const std::string& ifName, const std::string& dst,
-                                           const std::string& nextHop, const std::string& mtu) {
-    std::vector<std::string> routeSubstrings;
-
-    routeSubstrings.push_back(ipRoutePrefix(ifName, dst, nextHop));
-
-    if (!mtu.empty()) {
-        // Add separate substring to match mtu value.
-        // This is needed because on some devices "error -11"/"error -113" appears between ip prefix
-        // and mtu for throw/unreachable routes.
-        routeSubstrings.push_back("mtu " + mtu);
-    }
-
-    return routeSubstrings;
-}
-
-void expectNetworkRouteExistsWithMtu(const char* ipVersion, const std::string& ifName,
-                                     const std::string& dst, const std::string& nextHop,
-                                     const std::string& mtu, const char* table) {
-    std::vector<std::string> routeSubstrings = ipRouteSubstrings(ifName, dst, nextHop, mtu);
-    EXPECT_TRUE(ipRouteExists(ipVersion, table, routeSubstrings))
-            << "Couldn't find route to " << dst << ": [" << Join(routeSubstrings, ", ")
-            << "] in table " << table;
-}
-
-void expectNetworkRouteExists(const char* ipVersion, const std::string& ifName,
-                              const std::string& dst, const std::string& nextHop,
-                              const char* table) {
-    expectNetworkRouteExistsWithMtu(ipVersion, ifName, dst, nextHop, "", table);
-}
-
-void expectNetworkRouteDoesNotExistWithMtu(const char* ipVersion, const std::string& ifName,
-                                           const std::string& dst, const std::string& nextHop,
-                                           const std::string& mtu, const char* table) {
-    std::vector<std::string> routeSubstrings = ipRouteSubstrings(ifName, dst, nextHop, mtu);
-    EXPECT_FALSE(ipRouteExists(ipVersion, table, routeSubstrings))
-            << "Found unexpected route [" << Join(routeSubstrings, ", ") << "] in table " << table;
-}
-
-void expectNetworkRouteDoesNotExist(const char* ipVersion, const std::string& ifName,
-                                    const std::string& dst, const std::string& nextHop,
-                                    const char* table) {
-    expectNetworkRouteDoesNotExistWithMtu(ipVersion, ifName, dst, nextHop, "", table);
-}
-
-bool ipRuleExists(const char* ipVersion, const std::string& ipRule) {
-    std::vector<std::string> rules = listIpRules(ipVersion);
-    for (const auto& rule : rules) {
-        if (rule.find(ipRule) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
-}
-
-void expectNetworkDefaultIpRuleExists(const char* ifName) {
-    std::string networkDefaultRule =
-            StringPrintf("%u:\tfrom all fwmark 0x0/0xffff iif lo lookup %s",
-                         RULE_PRIORITY_DEFAULT_NETWORK, ifName);
-
-    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
-        EXPECT_TRUE(ipRuleExists(ipVersion, networkDefaultRule));
-    }
-}
-
-void expectNetworkDefaultIpRuleDoesNotExist() {
-    std::string networkDefaultRule =
-            StringPrintf("%u:\tfrom all fwmark 0x0/0xffff iif lo", RULE_PRIORITY_DEFAULT_NETWORK);
-
-    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
-        EXPECT_FALSE(ipRuleExists(ipVersion, networkDefaultRule));
-    }
-}
-
-void expectNetworkPermissionIpRuleExists(const char* ifName, int permission) {
-    std::string networkPermissionRule = "";
-    switch (permission) {
-        case INetd::PERMISSION_NONE:
-            networkPermissionRule =
-                    StringPrintf("%u:\tfrom all fwmark 0x1ffdd/0x1ffff iif lo lookup %s",
-                                 RULE_PRIORITY_EXPLICIT_NETWORK, ifName);
-            break;
-        case INetd::PERMISSION_NETWORK:
-            networkPermissionRule =
-                    StringPrintf("%u:\tfrom all fwmark 0x5ffdd/0x5ffff iif lo lookup %s",
-                                 RULE_PRIORITY_EXPLICIT_NETWORK, ifName);
-            break;
-        case INetd::PERMISSION_SYSTEM:
-            networkPermissionRule =
-                    StringPrintf("%u:\tfrom all fwmark 0xdffdd/0xdffff iif lo lookup %s",
-                                 RULE_PRIORITY_EXPLICIT_NETWORK, ifName);
-            break;
-    }
-
-    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
-        EXPECT_TRUE(ipRuleExists(ipVersion, networkPermissionRule));
-    }
-}
-
-// TODO: It is a duplicate function, need to remove it
-bool iptablesNetworkPermissionIptablesRuleExists(const char* binary, const char* chainName,
-                                                 const std::string& expectedInterface,
-                                                 const std::string& expectedRule,
-                                                 const char* table) {
-    std::vector<std::string> rules = listIptablesRuleByTable(binary, table, chainName);
-    for (const auto& rule : rules) {
-        if (rule.find(expectedInterface) != std::string::npos) {
-            if (rule.find(expectedRule) != std::string::npos) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-void expectNetworkPermissionIptablesRuleExists(const char* ifName, int permission) {
-    static const char ROUTECTRL_INPUT[] = "routectrl_mangle_INPUT";
-    std::string networkIncomingPacketMarkRule = "";
-    switch (permission) {
-        case INetd::PERMISSION_NONE:
-            networkIncomingPacketMarkRule = "MARK xset 0x3ffdd/0xffefffff";
-            break;
-        case INetd::PERMISSION_NETWORK:
-            networkIncomingPacketMarkRule = "MARK xset 0x7ffdd/0xffefffff";
-            break;
-        case INetd::PERMISSION_SYSTEM:
-            networkIncomingPacketMarkRule = "MARK xset 0xfffdd/0xffefffff";
-            break;
-    }
-
-    for (const auto& binary : {IPTABLES_PATH, IP6TABLES_PATH}) {
-        EXPECT_TRUE(iptablesNetworkPermissionIptablesRuleExists(
-                binary, ROUTECTRL_INPUT, ifName, networkIncomingPacketMarkRule, MANGLE_TABLE));
-    }
-}
-
-}  // namespace
 
 TEST_F(NetdBinderTest, NetworkAddRemoveRouteUserPermission) {
     static const struct {
@@ -3511,27 +3528,6 @@ void expectVpnFallthroughRuleExists(const std::string& ifName, int vpnNetId) {
                          RULE_PRIORITY_VPN_FALLTHROUGH, vpnNetId, ifName.c_str());
     for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
         EXPECT_TRUE(ipRuleExists(ipVersion, vpnFallthroughRule));
-    }
-}
-
-bool ipRouteExists(const char* ipType, std::string& ipRoute, const std::string& tableName) {
-    std::vector<std::string> routes = listIpRoutes(ipType, tableName.c_str());
-    for (const auto& route : routes) {
-        if (route.find(ipRoute) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
-}
-
-void expectVpnLocalExclusionRuleExists(const std::string& ifName) {
-    std::string tableName = std::string(ifName + "_local");
-    // Check if rule exists
-    std::string vpnLocalExclusionRule =
-            StringPrintf("%d:\tfrom all fwmark 0x0/0x10000 iif lo lookup %s",
-                         RULE_PRIORITY_LOCAL_ROUTES, tableName.c_str());
-    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
-        EXPECT_TRUE(ipRuleExists(ipVersion, vpnLocalExclusionRule));
     }
 }
 
