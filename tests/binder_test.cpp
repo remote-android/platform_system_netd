@@ -1454,14 +1454,14 @@ bool ipRouteExists(const char* ipType, std::string& ipRoute, const std::string& 
     return false;
 }
 
-void expectVpnLocalExclusionRuleExists(const std::string& ifName) {
+void expectVpnLocalExclusionRuleExists(const std::string& ifName, bool expectExists) {
     std::string tableName = std::string(ifName + "_local");
     // Check if rule exists
     std::string vpnLocalExclusionRule =
             StringPrintf("%d:\tfrom all fwmark 0x0/0x10000 iif lo lookup %s",
                          RULE_PRIORITY_LOCAL_ROUTES, tableName.c_str());
     for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
-        EXPECT_TRUE(ipRuleExists(ipVersion, vpnLocalExclusionRule));
+        EXPECT_EQ(expectExists, ipRuleExists(ipVersion, vpnLocalExclusionRule));
     }
 }
 
@@ -1670,6 +1670,11 @@ TEST_F(NetdBinderTest, ClatdStartStop) {
     EXPECT_TRUE(status.isOk());
     EXPECT_EQ(0, status.serviceSpecificErrorCode());
 
+    // Add clat interface and verify the expected rule exists
+    const std::string clatIface = "v4-" + sTun.name();
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, clatIface).isOk());
+    expectVpnLocalExclusionRuleExists(sTun.name(), true);
+
     // Starting it again returns EBUSY.
     status = mNetd->clatdStart(sTun.name(), nat64Prefix, &clatAddress);
     EXPECT_FALSE(status.isOk());
@@ -1692,6 +1697,10 @@ TEST_F(NetdBinderTest, ClatdStartStop) {
     EXPECT_TRUE(mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
     EXPECT_EQ(0, ifc_del_address(sTun.name().c_str(), v6.c_str(), 64));
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+
+    // Corresponding rules should be removed.
+    expectVpnLocalExclusionRuleExists(sTun.name(), false);
+    expectVpnLocalExclusionRuleExists(clatIface, false);
 }
 
 namespace {
@@ -3593,7 +3602,7 @@ void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable
     expectVpnFallthroughRuleExists(fallthroughNetwork.name(), vpnNetId);
 
     // Check if local exclusion rule exists
-    expectVpnLocalExclusionRuleExists(fallthroughNetwork.name());
+    expectVpnLocalExclusionRuleExists(fallthroughNetwork.name(), true);
     // Check if local exclusion route exists
     expectVpnLocalExclusionRouteExists(fallthroughNetwork.name());
 
