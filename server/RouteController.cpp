@@ -695,8 +695,14 @@ int RouteController::modifyVpnLocalExclusionRoute(bool add, const char* interfac
     if (int ret = modifyIpRoute(add ? RTM_NEWROUTE : RTM_DELROUTE,
                                 add ? NETLINK_ROUTE_CREATE_FLAGS : NETLINK_REQUEST_FLAGS, table,
                                 interface, destination, nullptr, 0 /* mtu */, 0 /* priority */)) {
-        // Trying to delete a route that already deleted shouldn't cause an error.
-        if (add || ret != -ESRCH) {
+        // Trying to delete a route that already deleted or trying to remove route on a non-exist
+        // interface shouldn't cause an error. ENODEV happens in an IPv6 only network with clatd
+        // started. Clat will be stopped first before calling destroying network, so the clat
+        // interface is removed first before destroying the network. While trying to find the index
+        // from the interface for removing the route during network destroying process, it will
+        // cause an ENODEV since the interface has been removed already. This expected error should
+        // not fail the follow up routing clean up.
+        if (add || (ret != -ESRCH && ret != -ENODEV)) {
             return ret;
         }
     }
