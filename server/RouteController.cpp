@@ -664,22 +664,25 @@ int RouteController::modifyVpnLocalExclusionRule(bool add, const char* physicalI
 // TODO: Update the local exclusion routes based on what actual subnet the network is.
 int RouteController::modifyVpnLocalExclusionRoutes(bool add, const char* interface) {
     for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V4); ++i) {
-        if (int ret = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V4[i])) {
-            // Routes are updated regardless of subnet. The destinations may be unreachable and
-            // cause EACCES error. This may happen now so ignore to not to cause an error.
-            if (ret != -EACCES) {
-                return ret;
-            }
+        if (int err = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V4[i])) {
+            return err;
         }
     }
 
+    // Stop setting v6 routes if the v6 is disabled on the interface.
+    std::string disable_ipv6;
+    if (int err = InterfaceController::getParameter("ipv6", "conf", interface, "disable_ipv6",
+                                                    &disable_ipv6)) {
+        ALOGE("Error getting %s v6 route configuration: %s", interface, strerror(-err));
+    }
+
+    if (!disable_ipv6.compare("1")) {
+        return 0;
+    }
+
     for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V6); ++i) {
-        if (int ret = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V6[i])) {
-            // Routes are updated regardless of subnet. The destinations may be unreachable and
-            // cause EACCES error. This may happen now so ignore to not to cause an error.
-            if (ret != -EACCES) {
-                return ret;
-            }
+        if (int err = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V6[i])) {
+            return err;
         }
     }
     return 0;
