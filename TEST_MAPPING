@@ -13,5 +13,9 @@
     ],
     "imports": [
         { "path": "packages/modules/DnsResolver" }
+    ],
+    "hwasan-postsubmit": [
+        { "name": "netd_integration_test" },
+        { "name": "netd_unit_test" }
     ]
 }
