@@ -107,6 +107,7 @@ cc_test {
         "libnetd_test_utils",
         "libnetdutils",
         "libnettestutils",
+        "libtcutils",
         "netd_aidl_interface-V8-cpp",
         "netd_event_listener_interface-V1-cpp",
         "oemnetd_aidl_interface-cpp",
