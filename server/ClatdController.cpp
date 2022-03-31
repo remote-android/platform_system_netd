@@ -215,21 +215,6 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    // This program will be attached to the v4-* interface which is a TUN and thus always rawip.
-    int rv = getClatEgress4ProgFd(RAWIP);
-    if (rv < 0) {
-        ALOGE("getClatEgress4ProgFd(RAWIP) failure: %s", strerror(-rv));
-        return;
-    }
-    unique_fd txRawIpProgFd(rv);
-
-    rv = getClatIngress6ProgFd(isEthernet.value());
-    if (rv < 0) {
-        ALOGE("getClatIngress6ProgFd(%d) failure: %s", isEthernet.value(), strerror(-rv));
-        return;
-    }
-    unique_fd rxProgFd(rv);
-
     ClatEgress4Key txKey = {
             .iif = tracker.v4ifIndex,
             .local4 = tracker.v4,
@@ -274,7 +259,7 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
     // But clat is started before the v4- interface is added to the network. The clat startup have
     // to add clsact of v4- tun interface first for adding bpf filter in maybeStartBpf.
     // TODO: move "qdisc add clsact" of v4- tun interface out from ClatdController.
-    rv = tcQdiscAddDevClsact(tracker.v4ifIndex);
+    int rv = tcQdiscAddDevClsact(tracker.v4ifIndex);
     if (rv) {
         ALOGE("tcQdiscAddDevClsact(%d[%s]) failure: %s", tracker.v4ifIndex, tracker.v4iface,
               strerror(-rv));
@@ -287,7 +272,8 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevEgressClatIpv4(tracker.v4ifIndex, txRawIpProgFd, RAWIP);
+    // This program will be attached to the v4-* interface which is a TUN and thus always rawip.
+    rv = tcFilterAddDevEgressClatIpv4(tracker.v4ifIndex, CLAT_EGRESS4_PROG_RAWIP_PATH);
     if (rv) {
         ALOGE("tcFilterAddDevEgressClatIpv4(%d[%s], RAWIP) failure: %s", tracker.v4ifIndex,
               tracker.v4iface, strerror(-rv));
@@ -305,7 +291,9 @@ void ClatdController::maybeStartBpf(const ClatdTracker& tracker) {
         return;
     }
 
-    rv = tcFilterAddDevIngressClatIpv6(tracker.ifIndex, rxProgFd, isEthernet.value());
+    std::string rxProgPath =
+            isEthernet.value() ? CLAT_INGRESS6_PROG_ETHER_PATH : CLAT_INGRESS6_PROG_RAWIP_PATH;
+    rv = tcFilterAddDevIngressClatIpv6(tracker.ifIndex, rxProgPath);
     if (rv) {
         ALOGE("tcFilterAddDevIngressClatIpv6(%d[%s], %d) failure: %s", tracker.ifIndex,
               tracker.iface, isEthernet.value(), strerror(-rv));
