@@ -66,6 +66,9 @@ const char BandwidthController::LOCAL_RAW_PREROUTING[] = "bw_raw_PREROUTING";
 const char BandwidthController::LOCAL_MANGLE_POSTROUTING[] = "bw_mangle_POSTROUTING";
 const char BandwidthController::LOCAL_GLOBAL_ALERT[] = "bw_global_alert";
 
+// Sync from packages/modules/Connectivity/bpf_progs/clatd.c
+#define CLAT_MARK 0xdeadc1a7
+
 auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
 
 using android::base::Join;
@@ -224,6 +227,8 @@ std::vector<std::string> getBasicAccountingCommands() {
             "COMMIT",
 
             "*raw",
+            // Drop duplicate ingress clat packets
+            StringPrintf("-A bw_raw_PREROUTING -m mark --mark 0x%x -j DROP", CLAT_MARK),
             // Prevents IPSec double counting (Tunnel mode and Transport mode,
             // respectively)
             ("-A bw_raw_PREROUTING -i " IPSEC_IFACE_PREFIX "+ -j RETURN"),

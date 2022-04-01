@@ -187,6 +187,7 @@ TEST_F(BandwidthControllerTest, TestEnableBandwidthControl) {
             "-I bw_happy_box -m bpf --object-pinned " XT_BPF_ALLOWLIST_PROG_PATH " -j RETURN\n"
             "COMMIT\n"
             "*raw\n"
+            "-A bw_raw_PREROUTING -m mark --mark 0xdeadc1a7 -j DROP\n"
             "-A bw_raw_PREROUTING -i ipsec+ -j RETURN\n"
             "-A bw_raw_PREROUTING -m policy --pol ipsec --dir in -j RETURN\n"
             "-A bw_raw_PREROUTING -m bpf --object-pinned " XT_BPF_INGRESS_PROG_PATH "\n"
