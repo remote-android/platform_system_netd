@@ -29,7 +29,6 @@ filegroup {
         "NetdConstants.cpp",
         "InterfaceController.cpp",
         "NetlinkCommands.cpp",
-        "TcUtils.cpp",
         "SockDiag.cpp",
         "XfrmController.cpp",
     ],
@@ -56,7 +55,6 @@ cc_library_static {
         "NFLogListener.cpp",
         "NetlinkCommands.cpp",
         "NetlinkManager.cpp",
-        "TcUtils.cpp",
         "RouteController.cpp",
         "SockDiag.cpp",
         "StrictController.cpp",
@@ -79,6 +77,7 @@ cc_library_static {
     ],
     static_libs: [
         "libip_checksum",
+        "libtcutils",
     ],
     aidl: {
         export_aidl_headers: true,
@@ -124,6 +123,7 @@ cc_binary {
     static_libs: [
         "libip_checksum",
         "libnetd_server",
+        "libtcutils",
     ],
     srcs: [
         "DummyNetwork.cpp",
@@ -209,7 +209,6 @@ cc_test {
         "IptablesBaseTest.cpp",
         "IptablesRestoreControllerTest.cpp",
         "NFLogListenerTest.cpp",
-        "TcUtilsTest.cpp",
         "RouteControllerTest.cpp",
         "SockDiagTest.cpp",
         "StrictControllerTest.cpp",
@@ -222,6 +221,7 @@ cc_test {
         "libip_checksum",
         "libnetd_server",
         "libnetd_test_tun_interface",
+        "libtcutils",
         "netd_aidl_interface-V8-cpp",
         "netd_event_listener_interface-V1-cpp",
     ],

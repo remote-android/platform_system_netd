@@ -16,8 +16,9 @@
 
 #pragma once
 
-#include "NetdConstants.h"  // IptablesTarget
-#include "Network.h"        // UidRangeMap
+#include "InterfaceController.h"  // getParameter
+#include "NetdConstants.h"        // IptablesTarget
+#include "Network.h"              // UidRangeMap
 #include "Permission.h"
 
 #include <android-base/thread_annotations.h>

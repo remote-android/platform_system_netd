@@ -20,7 +20,6 @@ cc_library_headers {
     export_include_dirs: ["include"],
     apex_available: [
         "//apex_available:platform",
-        "com.android.tethering",
     ],
 }
 
