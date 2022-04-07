@@ -40,6 +40,7 @@
 #include "Controllers.h"
 #include "FwmarkServer.h"
 #include "MDnsSdListener.h"
+#include "MDnsService.h"
 #include "NFLogListener.h"
 #include "NetdConstants.h"
 #include "NetdHwService.h"
@@ -58,6 +59,7 @@ using android::net::FwmarkServer;
 using android::net::gCtls;
 using android::net::gLog;
 using android::net::makeNFLogListener;
+using android::net::MDnsService;
 using android::net::NetdHwService;
 using android::net::NetdNativeService;
 using android::net::NetlinkManager;
@@ -177,12 +179,6 @@ int main() {
         exit(1);
     }
 
-    MDnsSdListener mdnsl;
-    if (mdnsl.startListener()) {
-        ALOGE("Unable to start MDnsSdListener (%s)", strerror(errno));
-        exit(1);
-    }
-
     FwmarkServer fwmarkServer(&gCtls->netCtrl, &gCtls->eventReporter);
     if (fwmarkServer.startListener()) {
         ALOGE("Unable to start FwmarkServer (%s)", strerror(errno));
@@ -196,6 +192,12 @@ int main() {
         exit(1);
     }
     gLog.info("Registering NetdNativeService: %" PRId64 "us", subTime.getTimeAndResetUs());
+
+    if ((ret = MDnsService::start()) != android::OK) {
+        ALOGE("Unable to start MDnsService: %d", ret);
+        exit(1);
+    }
+    gLog.info("Registering MDnsService: %" PRId64 "us", subTime.getTimeAndResetUs());
 
     android::net::process::ScopedPidFile pidFile(PID_FILE_PATH);
 

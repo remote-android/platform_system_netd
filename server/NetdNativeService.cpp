@@ -67,48 +67,6 @@ namespace net {
 namespace {
 const char OPT_SHORT[] = "--short";
 
-// The input permissions should be equivalent that this function would return ok if any of them is
-// granted.
-binder::Status checkAnyPermission(const std::vector<const char*>& permissions) {
-    pid_t pid = IPCThreadState::self()->getCallingPid();
-    uid_t uid = IPCThreadState::self()->getCallingUid();
-
-    // TODO: Do the pure permission check in this function. Have another method
-    // (e.g. checkNetworkStackPermission) to wrap AID_SYSTEM and
-    // AID_NETWORK_STACK uid check.
-    // If the caller is the system UID, don't check permissions.
-    // Otherwise, if the system server's binder thread pool is full, and all the threads are
-    // blocked on a thread that's waiting for us to complete, we deadlock. http://b/69389492
-    //
-    // From a security perspective, there is currently no difference, because:
-    // 1. The system server has the NETWORK_STACK permission, which grants access to all the
-    //    IPCs in this file.
-    // 2. AID_SYSTEM always has all permissions. See ActivityManager#checkComponentPermission.
-    if (uid == AID_SYSTEM) {
-        return binder::Status::ok();
-    }
-    // AID_NETWORK_STACK own MAINLINE_NETWORK_STACK permission, don't IPC to system server to check
-    // MAINLINE_NETWORK_STACK permission. Cross-process(netd, networkstack and system server)
-    // deadlock: http://b/149766727
-    if (uid == AID_NETWORK_STACK) {
-        for (const char* permission : permissions) {
-            if (std::strcmp(permission, PERM_MAINLINE_NETWORK_STACK) == 0) {
-                return binder::Status::ok();
-            }
-        }
-    }
-
-    for (const char* permission : permissions) {
-        if (checkPermission(String16(permission), pid, uid)) {
-            return binder::Status::ok();
-        }
-    }
-
-    auto err = StringPrintf("UID %d / PID %d does not have any of the following permissions: %s",
-                            uid, pid, android::base::Join(permissions, ',').c_str());
-    return binder::Status::fromExceptionCode(binder::Status::EX_SECURITY, err.c_str());
-}
-
 #define ENFORCE_ANY_PERMISSION(...)                                \
     do {                                                           \
         binder::Status status = checkAnyPermission({__VA_ARGS__}); \
@@ -151,13 +109,6 @@ binder::Status asBinderStatus(const base::Result<T> result) {
 
     return binder::Status::fromServiceSpecificError(result.error().code(),
                                                     result.error().message().c_str());
-}
-
-inline binder::Status statusFromErrcode(int ret) {
-    if (ret) {
-        return binder::Status::fromServiceSpecificError(-ret, strerror(-ret));
-    }
-    return binder::Status::ok();
 }
 
 bool contains(const Vector<String16>& words, const String16& word) {
