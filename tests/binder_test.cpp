@@ -71,6 +71,12 @@
 #include "TestUnsolService.h"
 #include "XfrmController.h"
 #include "android/net/INetd.h"
+#include "android/net/mdns/aidl/BnMDnsEventListener.h"
+#include "android/net/mdns/aidl/DiscoveryInfo.h"
+#include "android/net/mdns/aidl/GetAddressInfo.h"
+#include "android/net/mdns/aidl/IMDns.h"
+#include "android/net/mdns/aidl/RegistrationInfo.h"
+#include "android/net/mdns/aidl/ResolutionInfo.h"
 #include "binder/IServiceManager.h"
 #include "netdutils/InternetAddresses.h"
 #include "netdutils/Stopwatch.h"
@@ -102,6 +108,7 @@ using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::Trim;
 using android::base::unique_fd;
+using android::binder::Status;
 using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
 using android::net::InterfaceController;
@@ -131,6 +138,11 @@ using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::net::UidRanges;
+using android::net::mdns::aidl::DiscoveryInfo;
+using android::net::mdns::aidl::GetAddressInfo;
+using android::net::mdns::aidl::IMDns;
+using android::net::mdns::aidl::RegistrationInfo;
+using android::net::mdns::aidl::ResolutionInfo;
 using android::net::netd::aidl::NativeUidRangeConfig;
 using android::netdutils::getIfaceNames;
 using android::netdutils::IPAddress;
@@ -5043,4 +5055,61 @@ TEST_F(PerAppNetworkPermissionsTest, PermissionOnlyAffectsUid) {
         EXPECT_EQ(bindSocketToNetwork(sock, TEST_NETID2, true /*explicitlySelected*/), 0);
         EXPECT_EQ(connect(sock, (sockaddr*)&TEST_SOCKADDR_IN6, sizeof(TEST_SOCKADDR_IN6)), -1);
     }
+}
+
+class MDnsBinderTest : public ::testing::Test {
+  public:
+    MDnsBinderTest() {
+        sp<IServiceManager> sm = android::defaultServiceManager();
+        sp<IBinder> binder = sm->getService(String16("mdns"));
+        if (binder != nullptr) {
+            mMDns = android::interface_cast<IMDns>(binder);
+        }
+    }
+
+    void SetUp() override { ASSERT_NE(nullptr, mMDns.get()); }
+
+    void TearDown() override {}
+
+  protected:
+    sp<IMDns> mMDns;
+};
+
+class TestMDnsListener : public android::net::mdns::aidl::BnMDnsEventListener {
+  public:
+    Status onServiceRegistrationStatus(const RegistrationInfo& /* status */) override {
+        return Status::ok();
+    }
+    Status onServiceDiscoveryStatus(const DiscoveryInfo& /* status */) override {
+        return Status::ok();
+    }
+    Status onServiceResolutionStatus(const ResolutionInfo& /* status */) override {
+        return Status::ok();
+    }
+    Status onGettingServiceAddressStatus(const GetAddressInfo& /* status */) override {
+        return Status::ok();
+    }
+};
+
+TEST_F(MDnsBinderTest, EventListenerTest) {
+    // Register a null listener.
+    binder::Status status = mMDns->registerEventListener(nullptr);
+    EXPECT_FALSE(status.isOk());
+
+    // Unregister a null listener.
+    status = mMDns->unregisterEventListener(nullptr);
+    EXPECT_FALSE(status.isOk());
+
+    // Register the test listener.
+    android::sp<TestMDnsListener> testListener = new TestMDnsListener();
+    status = mMDns->registerEventListener(testListener);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Register the duplicated listener
+    status = mMDns->registerEventListener(testListener);
+    EXPECT_FALSE(status.isOk());
+
+    // Unregister the test listener
+    status = mMDns->unregisterEventListener(testListener);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 }
