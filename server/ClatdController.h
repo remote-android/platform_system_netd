@@ -52,8 +52,6 @@ class ClatdController {
 
     void dump(netdutils::DumpWriter& dw) EXCLUDES(mutex);
 
-    static constexpr const char LOCAL_RAW_PREROUTING[] = "clat_raw_PREROUTING";
-
     // Public struct ClatdTracker and tun_data for testing. gtest/TEST_F macro changes the class
     // name. In TEST_F(ClatdControllerTest..), can't access struct ClatdTracker and tun_data.
     // TODO: probably use gtest/FRIEND_TEST macro.
@@ -102,8 +100,6 @@ class ClatdController {
 
     void maybeStartBpf(const ClatdTracker& tracker) REQUIRES(mutex);
     void maybeStopBpf(const ClatdTracker& tracker) REQUIRES(mutex);
-    void setIptablesDropRule(bool add, const char* iface, const char* pfx96Str, const char* v6Str)
-            REQUIRES(mutex);
 
     int detect_mtu(const struct in6_addr* plat_subnet, uint32_t plat_suffix, uint32_t mark);
     int configure_interface(struct ClatdTracker* tracker, struct tun_data* tunnel) REQUIRES(mutex);
