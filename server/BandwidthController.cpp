@@ -238,9 +238,7 @@ std::vector<std::string> getBasicAccountingCommands() {
             // interface and later correct for overhead (+20 bytes/packet).
             //
             // Note: eBPF offloaded packets never hit base interface's ip6tables, and non
-            // offloaded packets (which when using xt_qtaguid means all packets, because
-            // clat eBPF offload does not work on xt_qtaguid devices) are dropped in
-            // clat_raw_PREROUTING.
+            // offloaded packets are dropped up above due to being marked with CLAT_MARK
             //
             // Hence we will never double count and additional corrections are not needed.
             // We can simply take the sum of base and stacked (+20B/pkt) interface counts.
