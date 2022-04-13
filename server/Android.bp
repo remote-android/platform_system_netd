@@ -173,7 +173,7 @@ cc_binary {
         "libutils",
         "libbinder",
         "dnsresolver_aidl_interface-V7-cpp",
-        "netd_aidl_interface-V6-cpp", // ndc is going to be deprecated. Keep it in v6 is enough.
+        "netd_aidl_interface-V8-cpp",
     ],
     srcs: [
         "ndc.cpp",
