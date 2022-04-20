@@ -112,8 +112,6 @@ using android::binder::Status;
 using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
 using android::net::InterfaceController;
-using android::net::LOCAL_EXCLUSION_ROUTES_V4;
-using android::net::LOCAL_EXCLUSION_ROUTES_V6;
 using android::net::MarkMaskParcel;
 using android::net::NativeNetworkConfig;
 using android::net::NativeNetworkType;
@@ -1454,16 +1452,6 @@ void expectNetworkRouteExistsWithMtu(const char* ipVersion, const std::string& i
     EXPECT_TRUE(ipRouteExists(ipVersion, table, routeSubstrings))
             << "Couldn't find route to " << dst << ": [" << Join(routeSubstrings, ", ")
             << "] in table " << table;
-}
-
-bool ipRouteExists(const char* ipType, std::string& ipRoute, const std::string& tableName) {
-    std::vector<std::string> routes = listIpRoutes(ipType, tableName.c_str());
-    for (const auto& route : routes) {
-        if (route.find(ipRoute) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
 }
 
 void expectVpnLocalExclusionRuleExists(const std::string& ifName, bool expectExists) {
@@ -3552,30 +3540,6 @@ void expectVpnFallthroughRuleExists(const std::string& ifName, int vpnNetId) {
     }
 }
 
-void expectVpnLocalExclusionRouteExists(const std::string& ifName) {
-    std::string tableName = std::string(ifName + "_local");
-    // Check if routes exist
-    for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V4); ++i) {
-        const auto& dst = LOCAL_EXCLUSION_ROUTES_V4[i];
-        std::string vpnLocalExclusionRoute =
-                StringPrintf("%s dev %s proto static scope link", dst, ifName.c_str());
-        EXPECT_TRUE(ipRouteExists(IP_RULE_V4, vpnLocalExclusionRoute, tableName));
-    }
-    // expect no other rule
-    std::vector<std::string> routes = listIpRoutes(IP_RULE_V4, tableName.c_str());
-    EXPECT_EQ(routes.size(), ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V4));
-
-    for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V6); ++i) {
-        const auto& dst = LOCAL_EXCLUSION_ROUTES_V6[i];
-        std::string vpnLocalExclusionRoute =
-                StringPrintf("%s dev %s proto static", dst, ifName.c_str());
-        EXPECT_TRUE(ipRouteExists(IP_RULE_V6, vpnLocalExclusionRoute, tableName));
-    }
-    // expect no other rule
-    routes = listIpRoutes(IP_RULE_V6, tableName.c_str());
-    EXPECT_EQ(routes.size(), ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V6));
-}
-
 void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable, uid_t uid,
                                const TunInterface& fallthroughNetwork,
                                const TunInterface& vpnNetwork, int vpnNetId = TEST_NETID2,
@@ -3615,8 +3579,6 @@ void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable
 
     // Check if local exclusion rule exists
     expectVpnLocalExclusionRuleExists(fallthroughNetwork.name(), true);
-    // Check if local exclusion route exists
-    expectVpnLocalExclusionRouteExists(fallthroughNetwork.name());
 
     // Expect fallthrough to default network
     // The fwmark differs depending on whether the VPN is bypassable or not.
