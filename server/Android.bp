@@ -37,7 +37,10 @@ filegroup {
 // Modules common to both netd and netd_unit_test
 cc_library_static {
     name: "libnetd_server",
-    defaults: ["netd_defaults"],
+    defaults: [
+        "netd_aidl_interface_lateststable_cpp_shared",
+        "netd_defaults",
+    ],
     include_dirs: [
         "system/netd/include",
         "system/netd/server/binder",
@@ -71,7 +74,6 @@ cc_library_static {
         "libpcap",
         "libssl",
         "libsysutils",
-        "netd_aidl_interface-V8-cpp",
         "netd_event_listener_interface-V1-cpp",
     ],
     static_libs: [
@@ -86,7 +88,10 @@ cc_library_static {
 
 cc_binary {
     name: "netd",
-    defaults: ["netd_defaults"],
+    defaults: [
+        "netd_aidl_interface_lateststable_cpp_shared",
+        "netd_defaults",
+    ],
     include_dirs: [
         "external/mdnsresponder/mDNSShared",
         "system/netd/include",
@@ -116,7 +121,6 @@ cc_binary {
         "libsysutils",
         "libutils",
         "mdns_aidl_interface-V1-cpp",
-        "netd_aidl_interface-V8-cpp",
         "netd_event_listener_interface-V1-cpp",
         "oemnetd_aidl_interface-cpp",
     ],
@@ -156,7 +160,10 @@ cc_binary {
 
 cc_binary {
     name: "ndc",
-    defaults: ["netd_defaults"],
+    defaults: [
+        "netd_aidl_interface_lateststable_cpp_shared",
+        "netd_defaults",
+    ],
     include_dirs: [
         "system/netd/include",
     ],
@@ -172,7 +179,6 @@ cc_binary {
         "libutils",
         "libbinder",
         "dnsresolver_aidl_interface-V7-cpp",
-        "netd_aidl_interface-V8-cpp",
     ],
     srcs: [
         "ndc.cpp",
@@ -187,7 +193,10 @@ cc_binary {
 
 cc_test {
     name: "netd_unit_test",
-    defaults: ["netd_defaults"],
+    defaults: [
+        "netd_aidl_interface_lateststable_cpp_static",
+        "netd_defaults",
+    ],
     test_suites: ["device-tests"],
     require_root: true,
     include_dirs: [
@@ -223,7 +232,6 @@ cc_test {
         "libnetd_server",
         "libnetd_test_tun_interface",
         "libtcutils",
-        "netd_aidl_interface-V8-cpp",
         "netd_event_listener_interface-V1-cpp",
     ],
     shared_libs: [
