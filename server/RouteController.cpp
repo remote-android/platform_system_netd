@@ -653,64 +653,9 @@ int RouteController::modifyVpnLocalExclusionRule(bool add, const char* physicalI
     fwmark.permission = PERMISSION_NONE;
     mask.permission = PERMISSION_NONE;
 
-    if (int ret = modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_LOCAL_ROUTES, table,
-                               fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE, INVALID_UID,
-                               INVALID_UID)) {
-        return ret;
-    }
-    return modifyVpnLocalExclusionRoutes(add, physicalInterface);
-}
-
-// TODO: Update the local exclusion routes based on what actual subnet the network is.
-int RouteController::modifyVpnLocalExclusionRoutes(bool add, const char* interface) {
-    for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V4); ++i) {
-        if (int err = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V4[i])) {
-            return err;
-        }
-    }
-
-    // Stop setting v6 routes if the v6 is disabled on the interface.
-    std::string disable_ipv6;
-    if (int err = InterfaceController::getParameter("ipv6", "conf", interface, "disable_ipv6",
-                                                    &disable_ipv6)) {
-        ALOGE("Error getting %s v6 route configuration: %s", interface, strerror(-err));
-    }
-
-    if (!disable_ipv6.compare("1")) {
-        return 0;
-    }
-
-    for (size_t i = 0; i < ARRAY_SIZE(LOCAL_EXCLUSION_ROUTES_V6); ++i) {
-        if (int err = modifyVpnLocalExclusionRoute(add, interface, LOCAL_EXCLUSION_ROUTES_V6[i])) {
-            return err;
-        }
-    }
-    return 0;
-}
-
-int RouteController::modifyVpnLocalExclusionRoute(bool add, const char* interface,
-                                                  const char* destination) {
-    uint32_t table = getRouteTableForInterface(interface, true /* local */);
-    if (table == RT_TABLE_UNSPEC) {
-        return -ESRCH;
-    }
-
-    if (int ret = modifyIpRoute(add ? RTM_NEWROUTE : RTM_DELROUTE,
-                                add ? NETLINK_ROUTE_CREATE_FLAGS : NETLINK_REQUEST_FLAGS, table,
-                                interface, destination, nullptr, 0 /* mtu */, 0 /* priority */)) {
-        // Trying to delete a route that already deleted or trying to remove route on a non-exist
-        // interface shouldn't cause an error. ENODEV happens in an IPv6 only network with clatd
-        // started. Clat will be stopped first before calling destroying network, so the clat
-        // interface is removed first before destroying the network. While trying to find the index
-        // from the interface for removing the route during network destroying process, it will
-        // cause an ENODEV since the interface has been removed already. This expected error should
-        // not fail the follow up routing clean up.
-        if (add || (ret != -ESRCH && ret != -ENODEV)) {
-            return ret;
-        }
-    }
-
-    return 0;
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_LOCAL_ROUTES, table,
+                        fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE, INVALID_UID,
+                        INVALID_UID);
 }
 
 // A rule to enable split tunnel VPNs.
