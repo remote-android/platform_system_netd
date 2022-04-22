@@ -18,7 +18,6 @@
 #define _CONTROLLERS_H__
 
 #include "BandwidthController.h"
-#include "ClatdController.h"
 #include "EventReporter.h"
 #include "FirewallController.h"
 #include "IdletimerController.h"
@@ -46,7 +45,6 @@ class Controllers {
     BandwidthController bandwidthCtrl;
     IdletimerController idletimerCtrl;
     FirewallController firewallCtrl;
-    ClatdController clatdCtrl;
     StrictController strictCtrl;
     EventReporter eventReporter;
     IptablesRestoreController iptablesRestoreCtrl;
