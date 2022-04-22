@@ -45,7 +45,6 @@ cc_library_static {
     header_libs: ["bpf_connectivity_headers"],
     srcs: [
         "BandwidthController.cpp",
-        "ClatdController.cpp",
         "Controllers.cpp",
         "NetdConstants.cpp",
         "FirewallController.cpp",
@@ -204,7 +203,6 @@ cc_test {
     ],
     srcs: [
         "BandwidthControllerTest.cpp",
-        "ClatdControllerTest.cpp",
         "ControllersTest.cpp",
         "FirewallControllerTest.cpp",
         "IdletimerControllerTest.cpp",
