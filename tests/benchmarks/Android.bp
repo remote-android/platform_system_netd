@@ -11,7 +11,10 @@ package {
 
 cc_benchmark {
     name: "netd_benchmark",
-    defaults: ["netd_defaults"],
+    defaults: [
+        "netd_aidl_interface_lateststable_cpp_static",
+        "netd_defaults",
+    ],
     shared_libs: [
         "libbase",
         "libbinder_ndk",
@@ -23,7 +26,6 @@ cc_benchmark {
     static_libs: [
         "libnetd_test_dnsresponder_ndk",
         "dnsresolver_aidl_interface-lateststable-ndk",
-        "netd_aidl_interface-lateststable-cpp", //  system/netd/server/UidRanges.h
         "netd_aidl_interface-lateststable-ndk",
         "netd_event_listener_interface-lateststable-ndk",
     ],
