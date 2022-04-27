@@ -169,9 +169,6 @@ status_t NetdNativeService::dump(int fd, const Vector<String16> &args) {
     gCtls->xfrmCtrl.dump(dw);
     dw.blankline();
 
-    gCtls->clatdCtrl.dump(dw);
-    dw.blankline();
-
     gCtls->tetherCtrl.dump(dw);
     dw.blankline();
 
@@ -753,17 +750,20 @@ binder::Status NetdNativeService::strictUidCleartextPenalty(int32_t uid, int32_t
     return statusFromErrcode(res);
 }
 
-binder::Status NetdNativeService::clatdStart(const std::string& ifName,
-                                             const std::string& nat64Prefix, std::string* v6Addr) {
+// TODO: remark @deprecated in INetd.aidl.
+binder::Status NetdNativeService::clatdStart(const std::string& /* ifName */,
+                                             const std::string& /* nat64Prefix */,
+                                             std::string* /* v6Addr */) {
     ENFORCE_ANY_PERMISSION(PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    int res = gCtls->clatdCtrl.startClatd(ifName.c_str(), nat64Prefix, v6Addr);
-    return statusFromErrcode(res);
+    // deprecated
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
-binder::Status NetdNativeService::clatdStop(const std::string& ifName) {
+// TODO: remark @deprecated in INetd.aidl.
+binder::Status NetdNativeService::clatdStop(const std::string& /* ifName */) {
     ENFORCE_ANY_PERMISSION(PERM_NETWORK_STACK, PERM_MAINLINE_NETWORK_STACK);
-    int res = gCtls->clatdCtrl.stopClatd(ifName.c_str());
-    return statusFromErrcode(res);
+    // deprecated
+    return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
 binder::Status NetdNativeService::ipfwdEnabled(bool* status) {
