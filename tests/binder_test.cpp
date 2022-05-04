@@ -225,7 +225,8 @@ class NetdBinderTest : public ::testing::Test {
                                      unique_fd* acceptedSocket);
 
     void createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetId = TEST_NETID2,
-                                 int fallthroughNetId = TEST_NETID1);
+                                 int fallthroughNetId = TEST_NETID1,
+                                 int nonDefaultNetId = TEST_NETID3);
 
     void createAndSetDefaultNetwork(int netId, const std::string& interface,
                                     int permission = INetd::PERMISSION_NONE);
@@ -3272,18 +3273,26 @@ TEST_F(NetdBinderTest, OemNetdRelated) {
 }
 
 void NetdBinderTest::createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetId,
-                                             int fallthroughNetId) {
+                                             int fallthroughNetId, int nonDefaultNetId) {
     // Re-init sTun* to ensure route rule exists.
     sTun.destroy();
     sTun.init();
     sTun2.destroy();
     sTun2.init();
+    sTun3.destroy();
+    sTun3.init();
 
     // Create physical network with fallthroughNetId but not set it as default network
     auto config = makeNativeNetworkConfig(fallthroughNetId, NativeNetworkType::PHYSICAL,
                                           INetd::PERMISSION_NONE, false, false);
     EXPECT_TRUE(mNetd->networkCreate(config).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(fallthroughNetId, sTun.name()).isOk());
+    // Create a physical network to test that local network access does not include the non-default
+    // networks.
+    auto nonDefaultNetworkConfig = makeNativeNetworkConfig(
+            nonDefaultNetId, NativeNetworkType::PHYSICAL, INetd::PERMISSION_NONE, false, false);
+    EXPECT_TRUE(mNetd->networkCreate(nonDefaultNetworkConfig).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(nonDefaultNetId, sTun3.name()).isOk());
 
     // Create VPN with vpnNetId
     config.netId = vpnNetId;
@@ -3464,7 +3473,8 @@ void expectVpnFallthroughRuleExists(const std::string& ifName, int vpnNetId) {
 
 void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable, uid_t uid,
                                const TunInterface& fallthroughNetwork,
-                               const TunInterface& vpnNetwork, int vpnNetId = TEST_NETID2,
+                               const TunInterface& vpnNetwork,
+                               const TunInterface& nonDefaultNetwork, int vpnNetId = TEST_NETID2,
                                int fallthroughNetId = TEST_NETID1) {
     // Set default network to NETID_UNSET
     EXPECT_TRUE(netdService->networkSetDefault(NETID_UNSET).isOk());
@@ -3499,8 +3509,10 @@ void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable
     // Check if fallthrough rule exists
     expectVpnFallthroughRuleExists(fallthroughNetwork.name(), vpnNetId);
 
-    // Check if local exclusion rule exists
+    // Check if local exclusion rule exists for default network
     expectVpnLocalExclusionRuleExists(fallthroughNetwork.name(), true);
+    // No local exclusion rule for non-default network
+    expectVpnLocalExclusionRuleExists(nonDefaultNetwork.name(), false);
 
     // Expect fallthrough to default network
     // The fwmark differs depending on whether the VPN is bypassable or not.
@@ -3548,14 +3560,14 @@ TEST_F(NetdBinderTest, SecureVPNFallthrough) {
     createVpnNetworkWithUid(true /* secure */, TEST_UID1);
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
-    expectVpnFallthroughWorks(mNetd.get(), false /* bypassable */, TEST_UID1, sTun, sTun2);
+    expectVpnFallthroughWorks(mNetd.get(), false /* bypassable */, TEST_UID1, sTun, sTun2, sTun3);
 }
 
 TEST_F(NetdBinderTest, BypassableVPNFallthrough) {
     createVpnNetworkWithUid(false /* secure */, TEST_UID1);
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
-    expectVpnFallthroughWorks(mNetd.get(), true /* bypassable */, TEST_UID1, sTun, sTun2);
+    expectVpnFallthroughWorks(mNetd.get(), true /* bypassable */, TEST_UID1, sTun, sTun2, sTun3);
 }
 
 namespace {
