@@ -1627,6 +1627,90 @@ void expectProcessDoesNotExist(const std::string& processName) {
 
 }  // namespace
 
+TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
+    static const struct {
+        const char* ipVersion;
+        const char* testDest;
+        const char* testNextHop;
+        const bool expectInLocalTable;
+    } kTestData[] = {
+            {IP_RULE_V6, "::/0", "fe80::", false},
+            {IP_RULE_V6, "::/0", "", false},
+            {IP_RULE_V6, "2001:db8:cafe::/64", "fe80::", false},
+            {IP_RULE_V6, "fe80::/64", "", true},
+            {IP_RULE_V6, "2001:db8:cafe::/48", "", true},
+            {IP_RULE_V6, "2001:db8:cafe::/64", "unreachable", false},
+            {IP_RULE_V6, "2001:db8:ca00::/40", "", true},
+    };
+
+    static const struct {
+        const char* ipVersion;
+        const char* testDest;
+        const char* testNextHop;
+    } kLinkLocalRoutes[] = {{IP_RULE_V6, "2001:db8::/32", ""}};
+
+    // Add test physical network
+    const auto& config = makeNativeNetworkConfig(TEST_NETID1, NativeNetworkType::PHYSICAL,
+                                                 INetd::PERMISSION_NONE, false, false);
+    EXPECT_TRUE(mNetd->networkCreate(config).isOk());
+    EXPECT_TRUE(mNetd->networkAddInterface(TEST_NETID1, sTun.name()).isOk());
+
+    // Get current default network NetId
+    binder::Status status = mNetd->networkGetDefault(&mStoredDefaultNetwork);
+    ASSERT_TRUE(status.isOk()) << status.exceptionMessage();
+
+    // Set default network
+    EXPECT_TRUE(mNetd->networkSetDefault(TEST_NETID1).isOk());
+
+    std::string localTableName = std::string(sTun.name() + "_local");
+    // Set up link-local routes for connectivity to the "gateway"
+    for (size_t i = 0; i < std::size(kLinkLocalRoutes); i++) {
+        const auto& td = kLinkLocalRoutes[i];
+
+        binder::Status status =
+                mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                 sTun.name().c_str());
+        // Verify routes in local table
+        expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                 localTableName.c_str());
+    }
+
+    for (size_t i = 0; i < std::size(kTestData); i++) {
+        const auto& td = kTestData[i];
+
+        binder::Status status =
+                mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        // Verify routes in local table
+        if (td.expectInLocalTable) {
+            expectNetworkRouteExists(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                     localTableName.c_str());
+        } else {
+            expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                           localTableName.c_str());
+        }
+
+        status = mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+        expectNetworkRouteDoesNotExist(td.ipVersion, sTun.name(), td.testDest, td.testNextHop,
+                                       localTableName.c_str());
+    }
+
+    for (size_t i = 0; i < std::size(kLinkLocalRoutes); i++) {
+        const auto& td = kLinkLocalRoutes[i];
+        status = mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
+        EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+    }
+
+    // Set default network back
+    status = mNetd->networkSetDefault(mStoredDefaultNetwork);
+
+    // Remove test physical network
+    EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
+}
+
 namespace {
 
 bool getIpfwdV4Enable() {
@@ -3309,6 +3393,9 @@ void NetdBinderTest::createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetI
     EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID1, sTun.name(), "::/0", "").isOk());
     // Add limited route
     EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID2, sTun2.name(), "2001:db8::/32", "").isOk());
+
+    // Also add default route to non-default network for per app default use.
+    EXPECT_TRUE(mNetd->networkAddRoute(TEST_NETID3, sTun3.name(), "::/0", "").isOk());
 }
 
 void NetdBinderTest::createAndSetDefaultNetwork(int netId, const std::string& interface,
@@ -3473,10 +3560,10 @@ void expectVpnFallthroughRuleExists(const std::string& ifName, int vpnNetId) {
 }
 
 void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable, uid_t uid,
-                               const TunInterface& fallthroughNetwork,
-                               const TunInterface& vpnNetwork,
-                               const TunInterface& nonDefaultNetwork, int vpnNetId = TEST_NETID2,
-                               int fallthroughNetId = TEST_NETID1) {
+                               uid_t uidNotInVpn, const TunInterface& fallthroughNetwork,
+                               const TunInterface& vpnNetwork, const TunInterface& otherNetwork,
+                               int vpnNetId = TEST_NETID2, int fallthroughNetId = TEST_NETID1,
+                               int otherNetId = TEST_NETID3) {
     // Set default network to NETID_UNSET
     EXPECT_TRUE(netdService->networkSetDefault(NETID_UNSET).isOk());
 
@@ -3513,7 +3600,7 @@ void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable
     // Check if local exclusion rule exists for default network
     expectVpnLocalExclusionRuleExists(fallthroughNetwork.name(), true);
     // No local exclusion rule for non-default network
-    expectVpnLocalExclusionRuleExists(nonDefaultNetwork.name(), false);
+    expectVpnLocalExclusionRuleExists(otherNetwork.name(), false);
 
     // Expect fallthrough to default network
     // The fwmark differs depending on whether the VPN is bypassable or not.
@@ -3553,6 +3640,25 @@ void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable
         EXPECT_FALSE(sendIPv6PacketFromUid(uid, outsideVpnAddr, &fwmark, fallthroughFd));
         EXPECT_FALSE(sendIPv6PacketFromUid(uid, insideVpnAddr, &fwmark, fallthroughFd));
     }
+
+    // Add per-app uid ranges.
+    EXPECT_TRUE(netdService
+                        ->networkAddUidRanges(otherNetId,
+                                              {makeUidRangeParcel(uidNotInVpn, uidNotInVpn)})
+                        .isOk());
+
+    int appDefaultFd = otherNetwork.getFdForTesting();
+
+    // UID is not inside the VPN range, so it won't go to vpn network.
+    // It won't fall into per app local rule because it's explicitly selected.
+    EXPECT_TRUE(sendIPv6PacketFromUid(uidNotInVpn, outsideVpnAddr, &fwmark, fallthroughFd));
+    EXPECT_TRUE(sendIPv6PacketFromUid(uidNotInVpn, insideVpnAddr, &fwmark, fallthroughFd));
+
+    // Reset explicitly selection.
+    setNetworkForProcess(NETID_UNSET);
+    // Connections can go to app default network.
+    EXPECT_TRUE(sendIPv6PacketFromUid(uidNotInVpn, insideVpnAddr, &fwmark, appDefaultFd));
+    EXPECT_TRUE(sendIPv6PacketFromUid(uidNotInVpn, outsideVpnAddr, &fwmark, appDefaultFd));
 }
 
 }  // namespace
@@ -3561,14 +3667,16 @@ TEST_F(NetdBinderTest, SecureVPNFallthrough) {
     createVpnNetworkWithUid(true /* secure */, TEST_UID1);
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
-    expectVpnFallthroughWorks(mNetd.get(), false /* bypassable */, TEST_UID1, sTun, sTun2, sTun3);
+    expectVpnFallthroughWorks(mNetd.get(), false /* bypassable */, TEST_UID1, TEST_UID2, sTun,
+                              sTun2, sTun3);
 }
 
 TEST_F(NetdBinderTest, BypassableVPNFallthrough) {
     createVpnNetworkWithUid(false /* secure */, TEST_UID1);
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
-    expectVpnFallthroughWorks(mNetd.get(), true /* bypassable */, TEST_UID1, sTun, sTun2, sTun3);
+    expectVpnFallthroughWorks(mNetd.get(), true /* bypassable */, TEST_UID1, TEST_UID2, sTun, sTun2,
+                              sTun3);
 }
 
 namespace {
