@@ -1633,21 +1633,51 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
         const char* testDest;
         const char* testNextHop;
         const bool expectInLocalTable;
-    } kTestData[] = {
-            {IP_RULE_V6, "::/0", "fe80::", false},
-            {IP_RULE_V6, "::/0", "", false},
-            {IP_RULE_V6, "2001:db8:cafe::/64", "fe80::", false},
-            {IP_RULE_V6, "fe80::/64", "", true},
-            {IP_RULE_V6, "2001:db8:cafe::/48", "", true},
-            {IP_RULE_V6, "2001:db8:cafe::/64", "unreachable", false},
-            {IP_RULE_V6, "2001:db8:ca00::/40", "", true},
-    };
+    } kTestData[] = {{IP_RULE_V6, "::/0", "fe80::", false},
+                     {IP_RULE_V6, "::/0", "", false},
+                     {IP_RULE_V6, "2001:db8:cafe::/64", "fe80::", false},
+                     {IP_RULE_V6, "fe80::/64", "", true},
+                     {IP_RULE_V6, "2001:db8:cafe::/48", "", true},
+                     {IP_RULE_V6, "2001:db8:cafe::/64", "unreachable", false},
+                     {IP_RULE_V6, "2001:db8:ca00::/40", "", true},
+                     {IP_RULE_V4, "0.0.0.0/0", "10.251.10.1", false},
+                     {IP_RULE_V4, "192.1.0.0/16", "", false},
+                     {IP_RULE_V4, "192.168.0.0/15", "", false},
+                     {IP_RULE_V4, "192.168.0.0/16", "", true},
+                     {IP_RULE_V4, "192.168.0.0/24", "", true},
+                     {IP_RULE_V4, "100.1.0.0/16", "", false},
+                     {IP_RULE_V4, "100.0.0.0/8", "", false},
+                     {IP_RULE_V4, "100.64.0.0/10", "", true},
+                     {IP_RULE_V4, "100.64.0.0/16", "", true},
+                     {IP_RULE_V4, "100.64.0.0/10", "throw", false},
+                     {IP_RULE_V4, "172.0.0.0/8", "", false},
+                     {IP_RULE_V4, "172.16.0.0/12", "", true},
+                     {IP_RULE_V4, "172.16.0.0/16", "", true},
+                     {IP_RULE_V4, "172.16.0.0/12", "unreachable", false},
+                     {IP_RULE_V4, "172.32.0.0/12", "", false},
+                     {IP_RULE_V4, "169.0.0.0/8", "", false},
+                     {IP_RULE_V4, "169.254.0.0/16", "", true},
+                     {IP_RULE_V4, "169.254.0.0/20", "", true},
+                     {IP_RULE_V4, "169.254.3.0/24", "", true},
+                     {IP_RULE_V4, "170.254.0.0/16", "", false},
+                     {IP_RULE_V4, "10.0.0.0/8", "", true},
+                     {IP_RULE_V4, "10.0.0.0/7", "", false},
+                     {IP_RULE_V4, "10.0.0.0/16", "", true},
+                     {IP_RULE_V4, "10.251.0.0/16", "", true},
+                     {IP_RULE_V4, "10.251.250.0/24", "", true},
+                     {IP_RULE_V4, "10.251.10.2/31", "throw", false},
+                     {IP_RULE_V4, "10.251.10.2/31", "unreachable", false}};
 
+    // To ensure that the nexthops for the above are reachable.
+    // Otherwise, the routes can't be created.
     static const struct {
         const char* ipVersion;
         const char* testDest;
         const char* testNextHop;
-    } kLinkLocalRoutes[] = {{IP_RULE_V6, "2001:db8::/32", ""}};
+    } kDirectlyConnectedRoutes[] = {
+            {IP_RULE_V4, "10.251.10.0/30", ""},
+            {IP_RULE_V6, "2001:db8::/32", ""},
+    };
 
     // Add test physical network
     const auto& config = makeNativeNetworkConfig(TEST_NETID1, NativeNetworkType::PHYSICAL,
@@ -1664,8 +1694,8 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
 
     std::string localTableName = std::string(sTun.name() + "_local");
     // Set up link-local routes for connectivity to the "gateway"
-    for (size_t i = 0; i < std::size(kLinkLocalRoutes); i++) {
-        const auto& td = kLinkLocalRoutes[i];
+    for (size_t i = 0; i < std::size(kDirectlyConnectedRoutes); i++) {
+        const auto& td = kDirectlyConnectedRoutes[i];
 
         binder::Status status =
                 mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
@@ -1679,7 +1709,8 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
 
     for (size_t i = 0; i < std::size(kTestData); i++) {
         const auto& td = kTestData[i];
-
+        SCOPED_TRACE(StringPrintf("case ip:%s, dest:%s, nexHop:%s, expect:%d", td.ipVersion,
+                                  td.testDest, td.testNextHop, td.expectInLocalTable));
         binder::Status status =
                 mNetd->networkAddRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
@@ -1698,8 +1729,8 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
                                        localTableName.c_str());
     }
 
-    for (size_t i = 0; i < std::size(kLinkLocalRoutes); i++) {
-        const auto& td = kLinkLocalRoutes[i];
+    for (size_t i = 0; i < std::size(kDirectlyConnectedRoutes); i++) {
+        const auto& td = kDirectlyConnectedRoutes[i];
         status = mNetd->networkRemoveRoute(TEST_NETID1, sTun.name(), td.testDest, td.testNextHop);
         EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     }
