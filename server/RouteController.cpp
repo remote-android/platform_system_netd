@@ -21,9 +21,9 @@
 #include <fcntl.h>
 #include <linux/fib_rules.h>
 #include <net/if.h>
-#include <sys/stat.h>
-
+#include <netdutils/InternetAddresses.h>
 #include <private/android_filesystem_config.h>
+#include <sys/stat.h>
 
 #include <map>
 
@@ -43,6 +43,7 @@
 using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
+using android::netdutils::IPPrefix;
 
 namespace android::net {
 
@@ -1107,11 +1108,11 @@ int RouteController::modifyTetheredNetwork(uint16_t action, const char* inputInt
 // Returns 0 on success or negative errno on failure.
 int RouteController::modifyRoute(uint16_t action, uint16_t flags, const char* interface,
                                  const char* destination, const char* nexthop, TableType tableType,
-                                 int mtu, int priority) {
+                                 int mtu, int priority, bool isLocal) {
     uint32_t table;
     switch (tableType) {
         case RouteController::INTERFACE: {
-            table = getRouteTableForInterface(interface, false /* local */);
+            table = getRouteTableForInterface(interface, isLocal);
             if (table == RT_TABLE_UNSPEC) {
                 return -ESRCH;
             }
@@ -1383,22 +1384,56 @@ int RouteController::removeInterfaceFromDefaultNetwork(const char* interface,
     return modifyDefaultNetwork(RTM_DELRULE, interface, permission);
 }
 
+bool RouteController::isLocalAddress(TableType tableType, const char* destination,
+                                     const char* nexthop) {
+    IPPrefix prefix = IPPrefix::forString(destination);
+    // TODO: Intersect with RFC1918/CGNAT/LINK LOCAL range.
+    return nexthop == nullptr && tableType == RouteController::INTERFACE &&
+           // Skip default route to prevent network being modeled as point-to-point interfaces.
+           (prefix.family() == AF_INET6 && prefix != IPPrefix::forString("::/0"));
+}
+
 int RouteController::addRoute(const char* interface, const char* destination, const char* nexthop,
                               TableType tableType, int mtu, int priority) {
-    return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination, nexthop,
-                       tableType, mtu, priority);
+    if (int ret = modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination,
+                              nexthop, tableType, mtu, priority, false /* isLocal */)) {
+        return ret;
+    }
+
+    if (isLocalAddress(tableType, destination, nexthop)) {
+        return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination,
+                           nexthop, tableType, mtu, priority, true /* isLocal */);
+    }
+
+    return 0;
 }
 
 int RouteController::removeRoute(const char* interface, const char* destination,
                                  const char* nexthop, TableType tableType, int priority) {
-    return modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
-                       tableType, 0 /* mtu */, priority);
+    if (int ret = modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
+                              tableType, 0 /* mtu */, priority, false /* isLocal */)) {
+        return ret;
+    }
+
+    if (isLocalAddress(tableType, destination, nexthop)) {
+        return modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
+                           tableType, 0 /* mtu */, priority, true /* isLocal */);
+    }
+    return 0;
 }
 
 int RouteController::updateRoute(const char* interface, const char* destination,
                                  const char* nexthop, TableType tableType, int mtu) {
-    return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination, nexthop,
-                       tableType, mtu, 0 /* priority */);
+    if (int ret = modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination,
+                              nexthop, tableType, mtu, 0 /* priority */, false /* isLocal */)) {
+        return ret;
+    }
+
+    if (isLocalAddress(tableType, destination, nexthop)) {
+        return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination,
+                           nexthop, tableType, mtu, 0 /* priority */, true /* isLocal */);
+    }
+    return 0;
 }
 
 int RouteController::enableTethering(const char* inputInterface, const char* outputInterface) {
