@@ -64,6 +64,14 @@ const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
 const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT";
 
+const IPPrefix V4_LOCAL_ADDR[] = {
+        IPPrefix::forString("169.254.0.0/16"),  // Link Local
+        IPPrefix::forString("100.64.0.0/10"),   // CGNAT
+        IPPrefix::forString("10.0.0.0/8"),      // RFC1918
+        IPPrefix::forString("172.16.0.0/12"),   // RFC1918
+        IPPrefix::forString("192.168.0.0/16")   // RFC1918
+};
+
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
 
 const uid_t UID_ROOT = 0;
@@ -1384,13 +1392,23 @@ int RouteController::removeInterfaceFromDefaultNetwork(const char* interface,
     return modifyDefaultNetwork(RTM_DELRULE, interface, permission);
 }
 
+bool RouteController::isTargetV4LocalRange(const char* dst) {
+    for (IPPrefix addr : V4_LOCAL_ADDR) {
+        if (addr.contains(IPPrefix::forString(dst))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool RouteController::isLocalAddress(TableType tableType, const char* destination,
                                      const char* nexthop) {
     IPPrefix prefix = IPPrefix::forString(destination);
-    // TODO: Intersect with RFC1918/CGNAT/LINK LOCAL range.
     return nexthop == nullptr && tableType == RouteController::INTERFACE &&
            // Skip default route to prevent network being modeled as point-to-point interfaces.
-           (prefix.family() == AF_INET6 && prefix != IPPrefix::forString("::/0"));
+           ((prefix.family() == AF_INET6 && prefix != IPPrefix::forString("::/0")) ||
+            // Skip adding non-target local network range.
+            (prefix.family() == AF_INET && isTargetV4LocalRange(destination)));
 }
 
 int RouteController::addRoute(const char* interface, const char* destination, const char* nexthop,
