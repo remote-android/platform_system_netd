@@ -1252,10 +1252,6 @@ int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* i
                                         MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
-    // TODO: Consider to remove regular table if adding local table failed.
-    if (int ret = modifyVpnLocalExclusionRule(true, interface)) {
-        return ret;
-    }
 
     maybeModifyQdiscClsact(interface, ACTION_ADD);
     updateTableNamesFile();
@@ -1270,10 +1266,7 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
         return ret;
     }
 
-    int ret = modifyVpnLocalExclusionRule(false, interface);
-    // Always perform flushRoute even if removing local exclusion rules failed.
-    ret |= flushRoutes(interface);
-    if (ret) {
+    if (int ret = flushRoutes(interface)) {
         return ret;
     }
 
@@ -1385,13 +1378,21 @@ int RouteController::disableTethering(const char* inputInterface, const char* ou
 
 int RouteController::addVirtualNetworkFallthrough(unsigned vpnNetId, const char* physicalInterface,
                                                   Permission permission) {
-    return modifyVpnFallthroughRule(RTM_NEWRULE, vpnNetId, physicalInterface, permission);
+    if (int ret = modifyVpnFallthroughRule(RTM_NEWRULE, vpnNetId, physicalInterface, permission)) {
+        return ret;
+    }
+
+    return modifyVpnLocalExclusionRule(true /* add */, physicalInterface);
 }
 
 int RouteController::removeVirtualNetworkFallthrough(unsigned vpnNetId,
                                                      const char* physicalInterface,
                                                      Permission permission) {
-    return modifyVpnFallthroughRule(RTM_DELRULE, vpnNetId, physicalInterface, permission);
+    if (int ret = modifyVpnFallthroughRule(RTM_DELRULE, vpnNetId, physicalInterface, permission)) {
+        return ret;
+    }
+
+    return modifyVpnLocalExclusionRule(false /* add */, physicalInterface);
 }
 
 int RouteController::addUsersToPhysicalNetwork(unsigned netId, const char* interface,
