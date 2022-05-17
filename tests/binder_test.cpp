@@ -129,6 +129,7 @@ using android::net::RULE_PRIORITY_UID_DEFAULT_NETWORK;
 using android::net::RULE_PRIORITY_UID_DEFAULT_UNREACHABLE;
 using android::net::RULE_PRIORITY_UID_EXPLICIT_NETWORK;
 using android::net::RULE_PRIORITY_UID_IMPLICIT_NETWORK;
+using android::net::RULE_PRIORITY_UID_LOCAL_ROUTES;
 using android::net::RULE_PRIORITY_VPN_FALLTHROUGH;
 using android::net::SockDiag;
 using android::net::TetherOffloadRuleParcel;
@@ -3287,8 +3288,8 @@ void NetdBinderTest::createVpnNetworkWithUid(bool secure, uid_t uid, int vpnNetI
                                           INetd::PERMISSION_NONE, false, false);
     EXPECT_TRUE(mNetd->networkCreate(config).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(fallthroughNetId, sTun.name()).isOk());
-    // Create a physical network to test that local network access does not include the non-default
-    // networks.
+    // Create another physical network in order to test VPN behaviour with multiple networks
+    // connected, of which one may be the default.
     auto nonDefaultNetworkConfig = makeNativeNetworkConfig(
             nonDefaultNetId, NativeNetworkType::PHYSICAL, INetd::PERMISSION_NONE, false, false);
     EXPECT_TRUE(mNetd->networkCreate(nonDefaultNetworkConfig).isOk());
@@ -3722,6 +3723,7 @@ void verifyAppUidRules(std::vector<bool>&& expectedResults, std::vector<UidRange
     ASSERT_EQ(expectedResults.size(), uidRanges.size());
     if (iface.size()) {
         std::string action = StringPrintf("lookup %s ", iface.c_str());
+        std::string action_local = StringPrintf("lookup %s_local ", iface.c_str());
         for (unsigned long i = 0; i < uidRanges.size(); i++) {
             EXPECT_EQ(expectedResults[i],
                       ipRuleExistsForRange(RULE_PRIORITY_UID_EXPLICIT_NETWORK + subPriority,
@@ -3732,6 +3734,8 @@ void verifyAppUidRules(std::vector<bool>&& expectedResults, std::vector<UidRange
             EXPECT_EQ(expectedResults[i],
                       ipRuleExistsForRange(RULE_PRIORITY_UID_DEFAULT_NETWORK + subPriority,
                                            uidRanges[i], action));
+            EXPECT_EQ(expectedResults[i], ipRuleExistsForRange(RULE_PRIORITY_UID_LOCAL_ROUTES,
+                                                               uidRanges[i], action_local));
         }
     } else {
         std::string action = "unreachable";
