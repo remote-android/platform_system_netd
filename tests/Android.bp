@@ -75,6 +75,7 @@ cc_test {
         "device-tests",
         "vts"
     ],
+    isolated: false,
     require_root: true,
     defaults: [
         "netd_aidl_interface_lateststable_cpp_static",
