@@ -55,11 +55,17 @@ constexpr int32_t RULE_PRIORITY_TETHERING                         = 21000;
 constexpr int32_t RULE_PRIORITY_UID_IMPLICIT_NETWORK              = 22000;
 constexpr int32_t RULE_PRIORITY_IMPLICIT_NETWORK                  = 23000;
 constexpr int32_t RULE_PRIORITY_BYPASSABLE_VPN_NO_LOCAL_EXCLUSION = 24000;
-// Rules used for excluding local route in the VPN network.
-constexpr int32_t RULE_PRIORITY_LOCAL_ROUTES                      = 25000;
-constexpr int32_t RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION    = 26000;
-constexpr int32_t RULE_PRIORITY_VPN_FALLTHROUGH                   = 27000;
-constexpr int32_t RULE_PRIORITY_UID_DEFAULT_NETWORK               = 28000;
+// Sets of rules used for excluding local routes from the VPN. Look up tables
+// that contain directly-connected local routes taken from the default network.
+// The first set is used for apps that have a per-UID default network. The rule
+// UID ranges match those of the per-UID default network rule for that network.
+// The second set has no UID ranges and is used for apps whose default network
+// is the system default network network.
+constexpr int32_t RULE_PRIORITY_UID_LOCAL_ROUTES                  = 25000;
+constexpr int32_t RULE_PRIORITY_LOCAL_ROUTES                      = 26000;
+constexpr int32_t RULE_PRIORITY_BYPASSABLE_VPN_LOCAL_EXCLUSION    = 27000;
+constexpr int32_t RULE_PRIORITY_VPN_FALLTHROUGH                   = 28000;
+constexpr int32_t RULE_PRIORITY_UID_DEFAULT_NETWORK               = 29000;
 // Rule used when framework wants to disable default network from specified applications. There will
 // be a small interval the same uid range exists in both UID_DEFAULT_UNREACHABLE and
 // UID_DEFAULT_NETWORK when framework is switching user preferences.
@@ -74,8 +80,8 @@ constexpr int32_t RULE_PRIORITY_UID_DEFAULT_NETWORK               = 28000;
 // The priority is lower than UID_DEFAULT_NETWORK. Otherwise, the app will be told by
 // ConnectivityService that it has a network in step 1 of the second case. But if it tries to use
 // the network, it will not work. That will potentially cause a user-visible error.
-constexpr int32_t RULE_PRIORITY_UID_DEFAULT_UNREACHABLE           = 29000;
-constexpr int32_t RULE_PRIORITY_DEFAULT_NETWORK                   = 30000;
+constexpr int32_t RULE_PRIORITY_UID_DEFAULT_UNREACHABLE           = 30000;
+constexpr int32_t RULE_PRIORITY_DEFAULT_NETWORK                   = 31000;
 constexpr int32_t RULE_PRIORITY_UNREACHABLE                       = 32000;
 // clang-format on
 
@@ -211,7 +217,7 @@ public:
     static int modifyUnreachableNetwork(unsigned netId, const UidRangeMap& uidRangeMap, bool add);
     static int modifyRoute(uint16_t action, uint16_t flags, const char* interface,
                            const char* destination, const char* nexthop, TableType tableType,
-                           int mtu, int priority);
+                           int mtu, int priority, bool isLocal);
     static int modifyTetheredNetwork(uint16_t action, const char* inputInterface,
                                      const char* outputInterface);
     static int modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
@@ -221,6 +227,11 @@ public:
                                     bool modifyNonUidBasedRules, bool excludeLocalRoutes);
     static void updateTableNamesFile() EXCLUDES(sInterfaceToTableLock);
     static int modifyVpnLocalExclusionRule(bool add, const char* physicalInterface);
+
+    static int modifyUidLocalNetworkRule(const char* interface, uid_t uidStart, uid_t uidEnd,
+                                         bool add);
+    static bool isLocalAddress(TableType tableType, const char* destination, const char* nexthop);
+    static bool isTargetV4LocalRange(const char* addrstr);
 };
 
 // Public because they are called by by RouteControllerTest.cpp.
