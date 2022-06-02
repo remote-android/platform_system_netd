@@ -18,6 +18,8 @@
 
 #include "MDnsEventReporter.h"
 
+using android::IInterface;
+using android::sp;
 using android::net::mdns::aidl::IMDnsEventListener;
 
 MDnsEventReporter& MDnsEventReporter::getInstance() {
@@ -30,11 +32,11 @@ const MDnsEventReporter::EventListenerSet& MDnsEventReporter::getEventListeners(
     return getEventListenersImpl();
 }
 
-int MDnsEventReporter::addEventListener(const android::sp<IMDnsEventListener>& listener) {
+int MDnsEventReporter::addEventListener(const sp<IMDnsEventListener>& listener) {
     return addEventListenerImpl(listener);
 }
 
-int MDnsEventReporter::removeEventListener(const android::sp<IMDnsEventListener>& listener) {
+int MDnsEventReporter::removeEventListener(const sp<IMDnsEventListener>& listener) {
     return removeEventListenerImpl(listener);
 }
 
@@ -43,7 +45,7 @@ const MDnsEventReporter::EventListenerSet& MDnsEventReporter::getEventListenersI
     return mEventListeners;
 }
 
-int MDnsEventReporter::addEventListenerImpl(const android::sp<IMDnsEventListener>& listener) {
+int MDnsEventReporter::addEventListenerImpl(const sp<IMDnsEventListener>& listener) {
     if (listener == nullptr) {
         ALOGE("The event listener should not be null");
         return -EINVAL;
@@ -52,39 +54,19 @@ int MDnsEventReporter::addEventListenerImpl(const android::sp<IMDnsEventListener
     std::lock_guard lock(mMutex);
 
     for (const auto& it : mEventListeners) {
-        if (android::IInterface::asBinder(it).get() ==
-            android::IInterface::asBinder(listener).get()) {
+        if (IInterface::asBinder(it->getListener()).get() == IInterface::asBinder(listener).get()) {
             ALOGW("The event listener was already subscribed");
             return -EEXIST;
         }
     }
 
-    // Create the death listener.
-    class DeathRecipient : public android::IBinder::DeathRecipient {
-      public:
-        DeathRecipient(MDnsEventReporter* eventReporter,
-                       const android::sp<IMDnsEventListener>& listener)
-            : mEventReporter(eventReporter), mListener(listener) {}
-        ~DeathRecipient() override = default;
-        void binderDied(const android::wp<android::IBinder>& /* who */) override {
-            mEventReporter->removeEventListenerImpl(mListener);
-        }
-
-      private:
-        MDnsEventReporter* mEventReporter;
-        android::sp<IMDnsEventListener> mListener;
-    };
-
-    android::sp<android::IBinder::DeathRecipient> deathRecipient =
-            new DeathRecipient(this, listener);
-
-    android::IInterface::asBinder(listener)->linkToDeath(deathRecipient);
-
-    mEventListeners.insert(listener);
+    auto eventListener = sp<EventListener>::make(this, listener);
+    IInterface::asBinder(listener)->linkToDeath(eventListener);
+    mEventListeners.insert(eventListener);
     return 0;
 }
 
-int MDnsEventReporter::removeEventListenerImpl(const android::sp<IMDnsEventListener>& listener) {
+int MDnsEventReporter::removeEventListenerImpl(const sp<IMDnsEventListener>& listener) {
     if (listener == nullptr) {
         ALOGE("The event listener should not be null");
         return -EINVAL;
@@ -92,6 +74,14 @@ int MDnsEventReporter::removeEventListenerImpl(const android::sp<IMDnsEventListe
 
     std::lock_guard lock(mMutex);
 
-    mEventListeners.erase(listener);
-    return 0;
+    for (const auto& it : mEventListeners) {
+        const auto& binder = IInterface::asBinder(it->getListener());
+        if (binder == IInterface::asBinder(listener)) {
+            binder->unlinkToDeath(it);
+            mEventListeners.erase(it);
+            return 0;
+        }
+    }
+    ALOGE("The event listener does not exist");
+    return -ENOENT;
 }
