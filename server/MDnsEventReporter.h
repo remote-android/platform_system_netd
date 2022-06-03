@@ -23,10 +23,28 @@
 
 class MDnsEventReporter final {
   public:
+    class EventListener : public android::IBinder::DeathRecipient {
+      public:
+        EventListener(MDnsEventReporter* eventReporter,
+                      const android::sp<android::net::mdns::aidl::IMDnsEventListener>& listener)
+            : mEventReporter(eventReporter), mListener(listener) {}
+        ~EventListener() override = default;
+        void binderDied(const android::wp<android::IBinder>& /* who */) override {
+            mEventReporter->removeEventListenerImpl(mListener);
+        }
+        android::sp<android::net::mdns::aidl::IMDnsEventListener> getListener() {
+            return mListener;
+        }
+
+      private:
+        MDnsEventReporter* mEventReporter;
+        android::sp<android::net::mdns::aidl::IMDnsEventListener> mListener;
+    };
+
     MDnsEventReporter(const MDnsEventReporter&) = delete;
     MDnsEventReporter& operator=(const MDnsEventReporter&) = delete;
 
-    using EventListenerSet = std::set<android::sp<android::net::mdns::aidl::IMDnsEventListener>>;
+    using EventListenerSet = std::set<android::sp<EventListener>>;
 
     // Get the instance of the singleton MDnsEventReporter.
     static MDnsEventReporter& getInstance();
@@ -56,5 +74,4 @@ class MDnsEventReporter final {
             const android::sp<android::net::mdns::aidl::IMDnsEventListener>& listener)
             EXCLUDES(mMutex);
     const EventListenerSet& getEventListenersImpl() const EXCLUDES(mMutex);
-    void handleEventBinderDied(const void* who) EXCLUDES(mMutex);
 };
