@@ -217,7 +217,7 @@ public:
     static int modifyUnreachableNetwork(unsigned netId, const UidRangeMap& uidRangeMap, bool add);
     static int modifyRoute(uint16_t action, uint16_t flags, const char* interface,
                            const char* destination, const char* nexthop, TableType tableType,
-                           int mtu, int priority);
+                           int mtu, int priority, bool isLocal);
     static int modifyTetheredNetwork(uint16_t action, const char* inputInterface,
                                      const char* outputInterface);
     static int modifyVpnFallthroughRule(uint16_t action, unsigned vpnNetId,
@@ -227,8 +227,10 @@ public:
                                     bool modifyNonUidBasedRules, bool excludeLocalRoutes);
     static void updateTableNamesFile() EXCLUDES(sInterfaceToTableLock);
     static int modifyVpnLocalExclusionRule(bool add, const char* physicalInterface);
+
     static int modifyUidLocalNetworkRule(const char* interface, uid_t uidStart, uid_t uidEnd,
                                          bool add);
+    static bool isLocalAddress(TableType tableType, const char* destination, const char* nexthop);
 };
 
 // Public because they are called by by RouteControllerTest.cpp.
