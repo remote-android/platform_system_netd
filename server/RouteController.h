@@ -231,6 +231,7 @@ public:
     static int modifyUidLocalNetworkRule(const char* interface, uid_t uidStart, uid_t uidEnd,
                                          bool add);
     static bool isLocalAddress(TableType tableType, const char* destination, const char* nexthop);
+    static bool isTargetV4LocalRange(const char* addrstr);
 };
 
 // Public because they are called by by RouteControllerTest.cpp.
