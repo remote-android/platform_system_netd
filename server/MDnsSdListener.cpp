@@ -140,7 +140,7 @@ void MDnsSdListenerDiscoverCallback(DNSServiceRef /* sdRef */, DNSServiceFlags f
     }
 
     for (const auto& it : listeners) {
-        it->onServiceDiscoveryStatus(info);
+        it->getListener()->onServiceDiscoveryStatus(info);
     }
 }
 
@@ -212,7 +212,7 @@ void MDnsSdListenerRegisterCallback(DNSServiceRef /* sdRef */, DNSServiceFlags /
     }
 
     for (const auto& it : listeners) {
-        it->onServiceRegistrationStatus(info);
+        it->getListener()->onServiceRegistrationStatus(info);
     }
 }
 
@@ -277,7 +277,7 @@ void MDnsSdListenerResolveCallback(DNSServiceRef /* sdRef */, DNSServiceFlags /*
     }
 
     for (const auto& it : listeners) {
-        it->onServiceResolutionStatus(info);
+        it->getListener()->onServiceResolutionStatus(info);
     }
 }
 
@@ -343,7 +343,7 @@ void MDnsSdListenerGetAddrInfoCallback(DNSServiceRef /* sdRef */, DNSServiceFlag
         info.result = IMDnsEventListener::SERVICE_GET_ADDR_FAILED;
     }
     for (const auto& it : listeners) {
-        it->onGettingServiceAddressStatus(info);
+        it->getListener()->onGettingServiceAddressStatus(info);
     }
 }
 
