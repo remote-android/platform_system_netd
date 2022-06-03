@@ -859,6 +859,13 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
                                                           subPriority, add)) {
                     return ret;
                 }
+
+                // Per-UID local network rules must always match per-app default network rules,
+                // because their purpose is to allow the UIDs to use the default network for
+                // local destinations within it.
+                if (int ret = modifyUidLocalNetworkRule(interface, range.start, range.stop, add)) {
+                    return ret;
+                }
             }
         }
     }
@@ -904,6 +911,32 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
         return modifyImplicitNetworkRule(netId, table, add);
     }
     return 0;
+}
+
+int RouteController::modifyUidLocalNetworkRule(const char* interface, uid_t uidStart, uid_t uidEnd,
+                                               bool add) {
+    uint32_t table = getRouteTableForInterface(interface, true /* local */);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    if ((uidStart == INVALID_UID) || (uidEnd == INVALID_UID)) {
+        ALOGE("modifyUidLocalNetworkRule, invalid UIDs (%u, %u)", uidStart, uidEnd);
+        return -EUSERS;
+    }
+
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    // Access to this network is controlled by UID rules, not permission bits.
+    fwmark.permission = PERMISSION_NONE;
+    mask.permission = PERMISSION_NONE;
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_UID_LOCAL_ROUTES, table,
+                        fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE, uidStart, uidEnd);
 }
 
 [[nodiscard]] static int modifyUidUnreachableRule(unsigned netId, uid_t uidStart, uid_t uidEnd,
