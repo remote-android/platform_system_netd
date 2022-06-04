@@ -21,9 +21,9 @@
 #include <fcntl.h>
 #include <linux/fib_rules.h>
 #include <net/if.h>
-#include <sys/stat.h>
-
+#include <netdutils/InternetAddresses.h>
 #include <private/android_filesystem_config.h>
+#include <sys/stat.h>
 
 #include <map>
 
@@ -43,6 +43,7 @@
 using android::base::StartsWith;
 using android::base::StringPrintf;
 using android::base::WriteStringToFile;
+using android::netdutils::IPPrefix;
 
 namespace android::net {
 
@@ -62,6 +63,14 @@ const char* const ROUTE_TABLE_NAME_LOCAL = "local";
 const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
 const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT";
+
+const IPPrefix V4_LOCAL_ADDR[] = {
+        IPPrefix::forString("169.254.0.0/16"),  // Link Local
+        IPPrefix::forString("100.64.0.0/10"),   // CGNAT
+        IPPrefix::forString("10.0.0.0/8"),      // RFC1918
+        IPPrefix::forString("172.16.0.0/12"),   // RFC1918
+        IPPrefix::forString("192.168.0.0/16")   // RFC1918
+};
 
 const uint8_t AF_FAMILIES[] = {AF_INET, AF_INET6};
 
@@ -859,6 +868,13 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
                                                           subPriority, add)) {
                     return ret;
                 }
+
+                // Per-UID local network rules must always match per-app default network rules,
+                // because their purpose is to allow the UIDs to use the default network for
+                // local destinations within it.
+                if (int ret = modifyUidLocalNetworkRule(interface, range.start, range.stop, add)) {
+                    return ret;
+                }
             }
         }
     }
@@ -904,6 +920,32 @@ int RouteController::modifyPhysicalNetwork(unsigned netId, const char* interface
         return modifyImplicitNetworkRule(netId, table, add);
     }
     return 0;
+}
+
+int RouteController::modifyUidLocalNetworkRule(const char* interface, uid_t uidStart, uid_t uidEnd,
+                                               bool add) {
+    uint32_t table = getRouteTableForInterface(interface, true /* local */);
+    if (table == RT_TABLE_UNSPEC) {
+        return -ESRCH;
+    }
+
+    if ((uidStart == INVALID_UID) || (uidEnd == INVALID_UID)) {
+        ALOGE("modifyUidLocalNetworkRule, invalid UIDs (%u, %u)", uidStart, uidEnd);
+        return -EUSERS;
+    }
+
+    Fwmark fwmark;
+    Fwmark mask;
+
+    fwmark.explicitlySelected = false;
+    mask.explicitlySelected = true;
+
+    // Access to this network is controlled by UID rules, not permission bits.
+    fwmark.permission = PERMISSION_NONE;
+    mask.permission = PERMISSION_NONE;
+
+    return modifyIpRule(add ? RTM_NEWRULE : RTM_DELRULE, RULE_PRIORITY_UID_LOCAL_ROUTES, table,
+                        fwmark.intValue, mask.intValue, IIF_LOOPBACK, OIF_NONE, uidStart, uidEnd);
 }
 
 [[nodiscard]] static int modifyUidUnreachableRule(unsigned netId, uid_t uidStart, uid_t uidEnd,
@@ -1074,11 +1116,11 @@ int RouteController::modifyTetheredNetwork(uint16_t action, const char* inputInt
 // Returns 0 on success or negative errno on failure.
 int RouteController::modifyRoute(uint16_t action, uint16_t flags, const char* interface,
                                  const char* destination, const char* nexthop, TableType tableType,
-                                 int mtu, int priority) {
+                                 int mtu, int priority, bool isLocal) {
     uint32_t table;
     switch (tableType) {
         case RouteController::INTERFACE: {
-            table = getRouteTableForInterface(interface, false /* local */);
+            table = getRouteTableForInterface(interface, isLocal);
             if (table == RT_TABLE_UNSPEC) {
                 return -ESRCH;
             }
@@ -1252,10 +1294,6 @@ int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* i
                                         MODIFY_NON_UID_BASED_RULES)) {
         return ret;
     }
-    // TODO: Consider to remove regular table if adding local table failed.
-    if (int ret = modifyVpnLocalExclusionRule(true, interface)) {
-        return ret;
-    }
 
     maybeModifyQdiscClsact(interface, ACTION_ADD);
     updateTableNamesFile();
@@ -1270,10 +1308,7 @@ int RouteController::removeInterfaceFromPhysicalNetwork(unsigned netId, const ch
         return ret;
     }
 
-    int ret = modifyVpnLocalExclusionRule(false, interface);
-    // Always perform flushRoute even if removing local exclusion rules failed.
-    ret |= flushRoutes(interface);
-    if (ret) {
+    if (int ret = flushRoutes(interface)) {
         return ret;
     }
 
@@ -1357,22 +1392,66 @@ int RouteController::removeInterfaceFromDefaultNetwork(const char* interface,
     return modifyDefaultNetwork(RTM_DELRULE, interface, permission);
 }
 
+bool RouteController::isTargetV4LocalRange(const char* dst) {
+    for (IPPrefix addr : V4_LOCAL_ADDR) {
+        if (addr.contains(IPPrefix::forString(dst))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool RouteController::isLocalAddress(TableType tableType, const char* destination,
+                                     const char* nexthop) {
+    IPPrefix prefix = IPPrefix::forString(destination);
+    return nexthop == nullptr && tableType == RouteController::INTERFACE &&
+           // Skip default route to prevent network being modeled as point-to-point interfaces.
+           ((prefix.family() == AF_INET6 && prefix != IPPrefix::forString("::/0")) ||
+            // Skip adding non-target local network range.
+            (prefix.family() == AF_INET && isTargetV4LocalRange(destination)));
+}
+
 int RouteController::addRoute(const char* interface, const char* destination, const char* nexthop,
                               TableType tableType, int mtu, int priority) {
-    return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination, nexthop,
-                       tableType, mtu, priority);
+    if (int ret = modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination,
+                              nexthop, tableType, mtu, priority, false /* isLocal */)) {
+        return ret;
+    }
+
+    if (isLocalAddress(tableType, destination, nexthop)) {
+        return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination,
+                           nexthop, tableType, mtu, priority, true /* isLocal */);
+    }
+
+    return 0;
 }
 
 int RouteController::removeRoute(const char* interface, const char* destination,
                                  const char* nexthop, TableType tableType, int priority) {
-    return modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
-                       tableType, 0 /* mtu */, priority);
+    if (int ret = modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
+                              tableType, 0 /* mtu */, priority, false /* isLocal */)) {
+        return ret;
+    }
+
+    if (isLocalAddress(tableType, destination, nexthop)) {
+        return modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
+                           tableType, 0 /* mtu */, priority, true /* isLocal */);
+    }
+    return 0;
 }
 
 int RouteController::updateRoute(const char* interface, const char* destination,
                                  const char* nexthop, TableType tableType, int mtu) {
-    return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination, nexthop,
-                       tableType, mtu, 0 /* priority */);
+    if (int ret = modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination,
+                              nexthop, tableType, mtu, 0 /* priority */, false /* isLocal */)) {
+        return ret;
+    }
+
+    if (isLocalAddress(tableType, destination, nexthop)) {
+        return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination,
+                           nexthop, tableType, mtu, 0 /* priority */, true /* isLocal */);
+    }
+    return 0;
 }
 
 int RouteController::enableTethering(const char* inputInterface, const char* outputInterface) {
@@ -1385,13 +1464,21 @@ int RouteController::disableTethering(const char* inputInterface, const char* ou
 
 int RouteController::addVirtualNetworkFallthrough(unsigned vpnNetId, const char* physicalInterface,
                                                   Permission permission) {
-    return modifyVpnFallthroughRule(RTM_NEWRULE, vpnNetId, physicalInterface, permission);
+    if (int ret = modifyVpnFallthroughRule(RTM_NEWRULE, vpnNetId, physicalInterface, permission)) {
+        return ret;
+    }
+
+    return modifyVpnLocalExclusionRule(true /* add */, physicalInterface);
 }
 
 int RouteController::removeVirtualNetworkFallthrough(unsigned vpnNetId,
                                                      const char* physicalInterface,
                                                      Permission permission) {
-    return modifyVpnFallthroughRule(RTM_DELRULE, vpnNetId, physicalInterface, permission);
+    if (int ret = modifyVpnFallthroughRule(RTM_DELRULE, vpnNetId, physicalInterface, permission)) {
+        return ret;
+    }
+
+    return modifyVpnLocalExclusionRule(false /* add */, physicalInterface);
 }
 
 int RouteController::addUsersToPhysicalNetwork(unsigned netId, const char* interface,
