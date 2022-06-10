@@ -32,8 +32,11 @@
 
 #include "log/log.h"
 
+#include <android/binder_manager.h>
+#include <android/binder_process.h>
 #include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
+#include <hidl/HidlTransportSupport.h>
 #include <netdutils/Stopwatch.h>
 #include <processgroup/processgroup.h>
 
@@ -43,6 +46,7 @@
 #include "MDnsService.h"
 #include "NFLogListener.h"
 #include "NetdConstants.h"
+#include "NetdHwAidlService.h"
 #include "NetdHwService.h"
 #include "NetdNativeService.h"
 #include "NetlinkManager.h"
@@ -64,6 +68,7 @@ using android::net::NetdHwService;
 using android::net::NetdNativeService;
 using android::net::NetlinkManager;
 using android::net::NFLogListener;
+using android::net::aidl::NetdHwAidlService;
 using android::netdutils::Stopwatch;
 
 const char* const PID_FILE_PATH = "/data/misc/net/netd_pid";
@@ -202,16 +207,26 @@ int main() {
     android::net::process::ScopedPidFile pidFile(PID_FILE_PATH);
 
     // Now that netd is ready to process commands, advertise service availability for HAL clients.
+    // Usage of this HAL is anticipated to be thin; one thread per HAL service should suffice,
+    // AIDL and HIDL.
+    android::hardware::configureRpcThreadpool(2, true /* callerWillJoin */);
+    IPCThreadState::self()->disableBackgroundScheduling(true);
+
+    std::thread aidlService = std::thread(NetdHwAidlService::run);
+
     sp<NetdHwService> mHwSvc(new NetdHwService());
+    bool startedHidlService = true;
     if ((ret = mHwSvc->start()) != android::OK) {
-        ALOGE("Unable to start NetdHwService: %d", ret);
-        exit(1);
+        ALOGE("Unable to start HIDL NetdHwService: %d", ret);
+        startedHidlService = false;
     }
+
     gLog.info("Registering NetdHwService: %" PRId64 "us", subTime.getTimeAndResetUs());
     gLog.info("Netd started in %" PRId64 "us", s.timeTakenUs());
-
-    IPCThreadState::self()->joinThreadPool();
-
+    if (startedHidlService) {
+        IPCThreadState::self()->joinThreadPool();
+    }
+    aidlService.join();
     gLog.info("netd exiting");
 
     exit(0);
