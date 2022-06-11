@@ -97,6 +97,7 @@ cc_binary {
         "system/netd/include",
     ],
     init_rc: ["netd.rc"],
+    vintf_fragments: ["android.system.net.netd-service.xml"],
     required: [
         "bpfloader",
     ],
@@ -104,8 +105,10 @@ cc_binary {
     shared_libs: [
         "android.system.net.netd@1.0",
         "android.system.net.netd@1.1",
+        "android.system.net.netd-V1-ndk",
         "libbase",
         "libbinder",
+        "libbinder_ndk",
         "libcutils",
         "libdl",
         "libhidlbase",
@@ -138,6 +141,7 @@ cc_binary {
         "MDnsSdListener.cpp",
         "MDnsService.cpp",
         "NetdCommand.cpp",
+        "NetdHwAidlService.cpp",
         "NetdHwService.cpp",
         "NetdNativeService.cpp",
         "NetlinkHandler.cpp",
