@@ -277,7 +277,15 @@ void Controllers::init() {
     initIptablesRules();
     Stopwatch s;
 
-    bandwidthCtrl.enableBandwidthControl();
+    if (int ret = bandwidthCtrl.enableBandwidthControl()) {
+        gLog.error("Failed to initialize BandwidthController (%s)", strerror(-ret));
+        // A failure to init almost definitely means that iptables failed to load
+        // our static ruleset, which then basically means network accounting will not work.
+        // As such simply exit netd.  This may crash loop the system, but by failing
+        // to bootup we will trigger rollback and thus this offers us protection against
+        // a mainline update breaking things.
+        exit(1);
+    }
     gLog.info("Enabling bandwidth control: %" PRId64 "us", s.getTimeAndResetUs());
 
     if (int ret = RouteController::Init(NetworkController::LOCAL_NET_ID)) {
