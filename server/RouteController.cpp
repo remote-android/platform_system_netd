@@ -64,7 +64,7 @@ const char* const ROUTE_TABLE_NAME_MAIN  = "main";
 
 const char* const RouteController::LOCAL_MANGLE_INPUT = "routectrl_mangle_INPUT";
 
-const IPPrefix V4_LOCAL_ADDR[] = {
+const IPPrefix V4_LOCAL_PREFIXES[] = {
         IPPrefix::forString("169.254.0.0/16"),  // Link Local
         IPPrefix::forString("100.64.0.0/10"),   // CGNAT
         IPPrefix::forString("10.0.0.0/8"),      // RFC1918
@@ -1392,8 +1392,8 @@ int RouteController::removeInterfaceFromDefaultNetwork(const char* interface,
     return modifyDefaultNetwork(RTM_DELRULE, interface, permission);
 }
 
-bool RouteController::isTargetV4LocalRange(const char* dst) {
-    for (IPPrefix addr : V4_LOCAL_ADDR) {
+bool RouteController::isWithinIpv4LocalPrefix(const char* dst) {
+    for (IPPrefix addr : V4_LOCAL_PREFIXES) {
         if (addr.contains(IPPrefix::forString(dst))) {
             return true;
         }
@@ -1401,14 +1401,14 @@ bool RouteController::isTargetV4LocalRange(const char* dst) {
     return false;
 }
 
-bool RouteController::isLocalAddress(TableType tableType, const char* destination,
-                                     const char* nexthop) {
+bool RouteController::isLocalRoute(TableType tableType, const char* destination,
+                                   const char* nexthop) {
     IPPrefix prefix = IPPrefix::forString(destination);
     return nexthop == nullptr && tableType == RouteController::INTERFACE &&
            // Skip default route to prevent network being modeled as point-to-point interfaces.
            ((prefix.family() == AF_INET6 && prefix != IPPrefix::forString("::/0")) ||
             // Skip adding non-target local network range.
-            (prefix.family() == AF_INET && isTargetV4LocalRange(destination)));
+            (prefix.family() == AF_INET && isWithinIpv4LocalPrefix(destination)));
 }
 
 int RouteController::addRoute(const char* interface, const char* destination, const char* nexthop,
@@ -1418,7 +1418,7 @@ int RouteController::addRoute(const char* interface, const char* destination, co
         return ret;
     }
 
-    if (isLocalAddress(tableType, destination, nexthop)) {
+    if (isLocalRoute(tableType, destination, nexthop)) {
         return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface, destination,
                            nexthop, tableType, mtu, priority, true /* isLocal */);
     }
@@ -1433,7 +1433,7 @@ int RouteController::removeRoute(const char* interface, const char* destination,
         return ret;
     }
 
-    if (isLocalAddress(tableType, destination, nexthop)) {
+    if (isLocalRoute(tableType, destination, nexthop)) {
         return modifyRoute(RTM_DELROUTE, NETLINK_REQUEST_FLAGS, interface, destination, nexthop,
                            tableType, 0 /* mtu */, priority, true /* isLocal */);
     }
@@ -1447,7 +1447,7 @@ int RouteController::updateRoute(const char* interface, const char* destination,
         return ret;
     }
 
-    if (isLocalAddress(tableType, destination, nexthop)) {
+    if (isLocalRoute(tableType, destination, nexthop)) {
         return modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_REPLACE_FLAGS, interface, destination,
                            nexthop, tableType, mtu, 0 /* priority */, true /* isLocal */);
     }
