@@ -29,7 +29,9 @@ cc_library_headers {
     apex_available: [
         "//apex_available:platform",
         "com.android.resolv",
+        "com.android.tethering",
     ],
+    sdk_version: "29",
     min_sdk_version: "29",
 }
 
