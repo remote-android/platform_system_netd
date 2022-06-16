@@ -31,7 +31,7 @@
 
 #include "android/net/TetherOffloadRuleParcel.h"
 
-#include "binder_utils/XtBpfProgLocations.h"
+#include "mainline/XtBpfProgLocations.h"
 
 namespace android {
 namespace net {

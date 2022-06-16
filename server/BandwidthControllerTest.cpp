@@ -34,7 +34,7 @@
 #include "BandwidthController.h"
 #include "Fwmark.h"
 #include "IptablesBaseTest.h"
-#include "binder_utils/XtBpfProgLocations.h"
+#include "mainline/XtBpfProgLocations.h"
 #include "tun_interface.h"
 
 using ::testing::_;
