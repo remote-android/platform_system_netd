@@ -55,6 +55,7 @@
 #include "FirewallController.h" /* For makeCriticalCommands */
 #include "Fwmark.h"
 #include "NetdConstants.h"
+#include "android/net/INetd.h"
 #include "bpf/BpfUtils.h"
 
 /* Alphabetical */
@@ -66,9 +67,6 @@ const char BandwidthController::LOCAL_RAW_PREROUTING[] = "bw_raw_PREROUTING";
 const char BandwidthController::LOCAL_MANGLE_POSTROUTING[] = "bw_mangle_POSTROUTING";
 const char BandwidthController::LOCAL_GLOBAL_ALERT[] = "bw_global_alert";
 
-// Sync from packages/modules/Connectivity/bpf_progs/clatd.c
-#define CLAT_MARK 0xdeadc1a7
-
 auto BandwidthController::iptablesRestoreFunction = execIptablesRestoreWithOutput;
 
 using android::base::Join;
@@ -76,6 +74,7 @@ using android::base::StartsWith;
 using android::base::StringAppendF;
 using android::base::StringPrintf;
 using android::net::FirewallController;
+using android::net::INetd::CLAT_MARK;
 using android::netdutils::StatusOr;
 using android::netdutils::UniqueFile;
 
@@ -147,8 +146,6 @@ const std::string NEW_CHAIN_COMMAND = "-N ";
  */
 
 const std::string COMMIT_AND_CLOSE = "COMMIT\n";
-const std::string BPF_PENALTY_BOX_MATCH_DENYLIST_COMMAND = StringPrintf(
-        "-I bw_penalty_box -m bpf --object-pinned %s -j REJECT", XT_BPF_DENYLIST_PROG_PATH);
 
 static const std::vector<std::string> IPT_FLUSH_COMMANDS = {
         /*
