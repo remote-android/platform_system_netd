@@ -33,6 +33,7 @@
 
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <netdutils/NetNativeTestBase.h>
 
 #include "bpf/BpfMap.h"
 #include "bpf/BpfUtils.h"
@@ -48,7 +49,7 @@ namespace bpf {
 constexpr uid_t TEST_UID = UID_MAX - 1;
 constexpr uint32_t TEST_TAG = 42;
 
-class BpfBasicTest : public testing::Test {
+class BpfBasicTest : public NetNativeTestBase {
   protected:
     BpfBasicTest() {}
 };

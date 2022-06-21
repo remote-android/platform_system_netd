@@ -58,6 +58,7 @@
 #include <com/android/internal/net/IOemNetd.h>
 #include <cutils/multiuser.h>
 #include <gtest/gtest.h>
+#include <netdutils/NetNativeTestBase.h>
 #include <netutils/ifc.h>
 #include <utils/Errors.h>
 #include "Fwmark.h"
@@ -175,7 +176,7 @@ static const in6_addr V6_ADDR = {
         {// 2001:db8:cafe::8888
          .u6_addr8 = {0x20, 0x01, 0x0d, 0xb8, 0xca, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0, 0x88, 0x88}}};
 
-class NetdBinderTest : public ::testing::Test {
+class NetdBinderTest : public NetNativeTestBase {
   public:
     NetdBinderTest() {
         sp<IServiceManager> sm = android::defaultServiceManager();
@@ -4792,7 +4793,7 @@ TEST_F(PerAppNetworkPermissionsTest, PermissionOnlyAffectsUid) {
     }
 }
 
-class MDnsBinderTest : public ::testing::Test {
+class MDnsBinderTest : public NetNativeTestBase {
   public:
     MDnsBinderTest() {
         sp<IServiceManager> sm = android::defaultServiceManager();
