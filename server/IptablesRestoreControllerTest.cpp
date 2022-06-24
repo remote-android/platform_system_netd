@@ -32,6 +32,7 @@
 #include <android-base/strings.h>
 #include <log/log.h>
 #include <netdutils/MockSyscalls.h>
+#include <netdutils/NetNativeTestBase.h>
 #include <netdutils/Stopwatch.h>
 
 #include "NetdConstants.h"
@@ -55,7 +56,7 @@ using android::netdutils::Stopwatch;
 using testing::Return;
 using testing::StrictMock;
 
-class IptablesRestoreControllerTest : public ::testing::Test {
+class IptablesRestoreControllerTest : public NetNativeTestBase {
 public:
   IptablesRestoreController con;
   int mDefaultMaxRetries = con.MAX_RETRIES;
