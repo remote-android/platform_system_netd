@@ -41,6 +41,7 @@
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <gtest/gtest.h>
+#include <netdutils/NetNativeTestBase.h>
 
 #include "Fwmark.h"
 #include "NetdConstants.h"
@@ -127,7 +128,7 @@ void expectAddressEquals(int family, const std::string& expected, const xfrm_add
     EXPECT_EQ(expected, actualStr);
 }
 
-class XfrmControllerTest : public ::testing::Test {
+class XfrmControllerTest : public NetNativeTestBase {
   public:
     testing::StrictMock<netdutils::ScopedMockSyscalls> mockSyscalls;
 };
