@@ -52,8 +52,6 @@ public:
   /* Match traffic owned by given UID. This is specific to a particular chain. */
   int setUidRule(ChildChain, int, FirewallRule);
 
-  int enableChildChains(ChildChain, bool);
-
   static std::string makeCriticalCommands(IptablesTarget target, const char* chainName);
 
   static const char* TABLE;
