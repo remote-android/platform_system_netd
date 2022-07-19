@@ -102,8 +102,11 @@ bool isTetheringInProcess() {
 }
 
 TEST(NetdSELinuxTest, CheckProperBpfTetheringLabels) {
-    assertBpfContext("/sys/fs/bpf/tethering",
-                     isTetheringInProcess() ? "fs_bpf_net_shared" : "fs_bpf_tethering");
+    if (isTetheringInProcess()) {
+        assertBpfContext("/sys/fs/bpf/net_shared/tethering", "fs_bpf_net_shared");
+    } else {
+        assertBpfContext("/sys/fs/bpf/tethering", "fs_bpf_tethering");
+    }
 }
 
 // Trivial thread function that simply immediately terminates successfully.
