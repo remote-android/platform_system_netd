@@ -917,9 +917,11 @@ StatusOr<TetherController::TetherStatsList> TetherController::getTetherStats() {
         }
 
         if (int ret = addForwardChainStats(statsList, statsString, parsedIptablesOutput)) {
+            /*
             return statusFromErrno(-ret, StringPrintf("failed to parse %s tether stats:\n%s",
                                                       target == V4 ? "IPv4": "IPv6",
                                                       parsedIptablesOutput.c_str()));
+            */
         }
     }
 
