@@ -638,7 +638,7 @@ NativeUidRangeConfig makeNativeUidRangeConfig(unsigned netId, std::vector<UidRan
                                               int32_t subPriority) {
     NativeUidRangeConfig res;
     res.netId = netId;
-    res.uidRanges = move(uidRanges);
+    res.uidRanges = std::move(uidRanges);
     res.subPriority = subPriority;
 
     return res;
@@ -3894,7 +3894,7 @@ void verifyAppUidRules(std::vector<bool>&& expectedResults, std::vector<UidRange
 
 void verifyAppUidRules(std::vector<bool>&& expectedResults, NativeUidRangeConfig& uidRangeConfig,
                        const std::string& iface) {
-    verifyAppUidRules(move(expectedResults), uidRangeConfig.uidRanges, iface,
+    verifyAppUidRules(std::move(expectedResults), uidRangeConfig.uidRanges, iface,
                       uidRangeConfig.subPriority);
 }
 
