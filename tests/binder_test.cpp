@@ -2461,6 +2461,13 @@ TEST_F(NetdBinderTest, TetherInterfaceAddRemoveList) {
     status = mNetd->tetherInterfaceList(&ifList);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectTetherInterfaceNotExists(ifList, sTun.name());
+
+    // Disable IPv6 tethering will disable IPv6 abilities by changing IPv6 settings(accept_ra,
+    // dad_transmits, accept_dad, disable_ipv6). See tetherInterfaceRemove in details.
+    // Re-init sTun to reset the interface to prevent affecting other test that requires IPv6 with
+    // the same interface.
+    sTun.destroy();
+    sTun.init();
 }
 
 TEST_F(NetdBinderTest, TetherDnsSetList) {
@@ -3043,6 +3050,7 @@ TEST_F(NetdBinderTest, InterfaceSetEnableIPv6) {
 }
 
 TEST_F(NetdBinderTest, InterfaceSetMtu) {
+    const int currentMtu = getInterfaceMtu(sTun.name());
     const int testMtu = 1200;
 
     // Add test physical network
@@ -3054,6 +3062,10 @@ TEST_F(NetdBinderTest, InterfaceSetMtu) {
     binder::Status status = mNetd->interfaceSetMtu(sTun.name(), testMtu);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     expectInterfaceMtu(sTun.name(), testMtu);
+
+    // restore the MTU back
+    status = mNetd->interfaceSetMtu(sTun.name(), currentMtu);
+    EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
 
     // Remove test physical network
     EXPECT_TRUE(mNetd->networkDestroy(TEST_NETID1).isOk());
