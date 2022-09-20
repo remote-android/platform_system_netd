@@ -165,7 +165,7 @@ int PhysicalNetwork::removeAsDefault() {
 }
 
 int PhysicalNetwork::addUsers(const UidRanges& uidRanges, int32_t subPriority) {
-    if (!isValidSubPriority(subPriority) || !canAddUidRanges(uidRanges, subPriority)) {
+    if (!isValidSubPriority(subPriority) || !canAddUidRanges(uidRanges)) {
         return -EINVAL;
     }
 
