@@ -65,7 +65,7 @@ public:
 
 protected:
     explicit Network(unsigned netId, bool secure = false);
-    bool canAddUidRanges(const UidRanges& uidRanges, int32_t subPriority) const;
+    bool canAddUidRanges(const UidRanges& uidRanges) const;
 
     const unsigned mNetId;
     std::set<std::string> mInterfaces;
