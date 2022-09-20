@@ -117,18 +117,12 @@ void Network::removeFromUidRangeMap(const UidRanges& uidRanges, int32_t subPrior
     }
 }
 
-bool Network::canAddUidRanges(const UidRanges& uidRanges, int32_t subPriority) const {
+bool Network::canAddUidRanges(const UidRanges& uidRanges) const {
     if (uidRanges.overlapsSelf()) {
         ALOGE("uid range %s overlaps self", uidRanges.toString().c_str());
         return false;
     }
 
-    auto iter = mUidRangeMap.find(subPriority);
-    if (iter != mUidRangeMap.end() && uidRanges.overlaps(iter->second)) {
-        ALOGE("uid range %s overlaps priority %d %s", uidRanges.toString().c_str(), subPriority,
-              iter->second.toString().c_str());
-        return false;
-    }
     return true;
 }
 
