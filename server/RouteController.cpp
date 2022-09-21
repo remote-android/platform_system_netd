@@ -667,6 +667,19 @@ int RouteController::modifyVpnLocalExclusionRule(bool add, const char* physicalI
                         INVALID_UID);
 }
 
+int RouteController::addFixedLocalRoutes(const char* interface) {
+    for (size_t i = 0; i < ARRAY_SIZE(V4_FIXED_LOCAL_PREFIXES); ++i) {
+        if (int ret = modifyRoute(RTM_NEWROUTE, NETLINK_ROUTE_CREATE_FLAGS, interface,
+                                  V4_FIXED_LOCAL_PREFIXES[i], nullptr /* nexthop */,
+                                  RouteController::INTERFACE, 0 /* mtu */, 0 /* priority */,
+                                  true /* isLocal */)) {
+            return ret;
+        }
+    }
+
+    return 0;
+}
+
 // A rule to enable split tunnel VPNs.
 //
 // If a packet with a VPN's netId doesn't find a route in the VPN's routing table, it's allowed to
@@ -1297,6 +1310,11 @@ int RouteController::addInterfaceToPhysicalNetwork(unsigned netId, const char* i
 
     maybeModifyQdiscClsact(interface, ACTION_ADD);
     updateTableNamesFile();
+
+    if (int ret = addFixedLocalRoutes(interface)) {
+        return ret;
+    }
+
     return 0;
 }
 
