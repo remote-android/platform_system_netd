@@ -137,6 +137,7 @@ using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::net::UidRanges;
+using android::net::V4_FIXED_LOCAL_PREFIXES;
 using android::net::mdns::aidl::DiscoveryInfo;
 using android::net::mdns::aidl::GetAddressInfo;
 using android::net::mdns::aidl::IMDns;
@@ -1701,6 +1702,13 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
     EXPECT_TRUE(mNetd->networkSetDefault(TEST_NETID1).isOk());
 
     std::string localTableName = std::string(sTun.name() + "_local");
+
+    // Verify the fixed routes exist in the local table.
+    for (size_t i = 0; i < std::size(V4_FIXED_LOCAL_PREFIXES); i++) {
+        expectNetworkRouteExists(IP_RULE_V4, sTun.name(), V4_FIXED_LOCAL_PREFIXES[i], "",
+                                 localTableName.c_str());
+    }
+
     // Set up link-local routes for connectivity to the "gateway"
     for (size_t i = 0; i < std::size(kDirectlyConnectedRoutes); i++) {
         const auto& td = kDirectlyConnectedRoutes[i];
