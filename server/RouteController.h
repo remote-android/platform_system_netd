@@ -85,6 +85,13 @@ constexpr int32_t RULE_PRIORITY_DEFAULT_NETWORK                   = 31000;
 constexpr int32_t RULE_PRIORITY_UNREACHABLE                       = 32000;
 // clang-format on
 
+static const char* V4_FIXED_LOCAL_PREFIXES[] = {
+        // The multicast range is 224.0.0.0/4 but only limit it to 224.0.0.0/24 since the IPv4
+        // definitions are not as precise as for IPv6, it is the only range that the standards
+        // (RFC 2365 and RFC 5771) specify is link-local and must not be forwarded.
+        "224.0.0.0/24"  // Link-local multicast; non-internet routable
+};
+
 class UidRanges;
 
 class RouteController {
@@ -230,8 +237,9 @@ public:
 
     static int modifyUidLocalNetworkRule(const char* interface, uid_t uidStart, uid_t uidEnd,
                                          bool add);
-    static bool isLocalAddress(TableType tableType, const char* destination, const char* nexthop);
-    static bool isTargetV4LocalRange(const char* addrstr);
+    static bool isLocalRoute(TableType tableType, const char* destination, const char* nexthop);
+    static bool isWithinIpv4LocalPrefix(const char* addrstr);
+    static int addFixedLocalRoutes(const char* interface);
 };
 
 // Public because they are called by by RouteControllerTest.cpp.
