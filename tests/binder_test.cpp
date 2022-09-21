@@ -4000,7 +4000,7 @@ void expectUnreachableError(uid_t uid, unsigned netId, int selectionMode) {
 
 }  // namespace
 
-// Verify whether API reject overlapped UID ranges
+// Verify how the API handle overlapped UID ranges
 TEST_F(NetdBinderTest, PerAppDefaultNetwork_OverlappedUidRanges) {
     const auto& config = makeNativeNetworkConfig(APP_DEFAULT_NETID, NativeNetworkType::PHYSICAL,
                                                  INetd::PERMISSION_NONE, false, false);
@@ -4014,28 +4014,23 @@ TEST_F(NetdBinderTest, PerAppDefaultNetwork_OverlappedUidRanges) {
     binder::Status status;
     status = mNetd->networkAddUidRanges(APP_DEFAULT_NETID,
                                         {makeUidRangeParcel(BASE_UID + 1, BASE_UID + 1)});
-    EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    EXPECT_TRUE(status.isOk());
 
     status = mNetd->networkAddUidRanges(APP_DEFAULT_NETID,
                                         {makeUidRangeParcel(BASE_UID + 9, BASE_UID + 10)});
-    EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    EXPECT_TRUE(status.isOk());
 
     status = mNetd->networkAddUidRanges(APP_DEFAULT_NETID,
                                         {makeUidRangeParcel(BASE_UID + 11, BASE_UID + 11)});
-    EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    EXPECT_TRUE(status.isOk());
 
     status = mNetd->networkAddUidRanges(APP_DEFAULT_NETID,
                                         {makeUidRangeParcel(BASE_UID + 12, BASE_UID + 13)});
-    EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    EXPECT_TRUE(status.isOk());
 
     status = mNetd->networkAddUidRanges(APP_DEFAULT_NETID,
                                         {makeUidRangeParcel(BASE_UID + 9, BASE_UID + 13)});
-    EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
+    EXPECT_TRUE(status.isOk());
 
     std::vector<UidRangeParcel> selfOverlappedUidRanges = {
             makeUidRangeParcel(BASE_UID + 20, BASE_UID + 20),
@@ -4730,11 +4725,6 @@ TEST_F(NetdBinderTest, UidRangeSubPriority_ValidateInputs) {
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig).isOk());
     uidRangeConfig.subPriority = SUB_PRIORITY_2;
     EXPECT_TRUE(mNetd->networkAddUidRangesParcel(uidRangeConfig).isOk());
-
-    // For a single network, identical UID ranges with the same priority is invalid.
-    status = mNetd->networkAddUidRangesParcel(uidRangeConfig);
-    EXPECT_FALSE(status.isOk());
-    EXPECT_EQ(EINVAL, status.serviceSpecificErrorCode());
 
     // Overlapping ranges is invalid.
     uidRangeConfig.uidRanges = {makeUidRangeParcel(BASE_UID + 1, BASE_UID + 1),
