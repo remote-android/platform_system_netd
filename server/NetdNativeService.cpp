@@ -664,9 +664,8 @@ binder::Status NetdNativeService::ipSecAddTunnelInterface(const std::string& dev
                                                           int32_t interfaceId) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    netdutils::Status result = gCtls->xfrmCtrl.ipSecAddTunnelInterface(
-            deviceName, localAddress, remoteAddress, iKey, oKey, interfaceId, false);
-    return binder::Status::ok();
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecAddTunnelInterface(
+            deviceName, localAddress, remoteAddress, iKey, oKey, interfaceId, false));
 }
 
 binder::Status NetdNativeService::ipSecUpdateTunnelInterface(const std::string& deviceName,
@@ -676,16 +675,14 @@ binder::Status NetdNativeService::ipSecUpdateTunnelInterface(const std::string& 
                                                              int32_t interfaceId) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    netdutils::Status result = gCtls->xfrmCtrl.ipSecAddTunnelInterface(
-            deviceName, localAddress, remoteAddress, iKey, oKey, interfaceId, true);
-    return binder::Status::ok();
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecAddTunnelInterface(
+            deviceName, localAddress, remoteAddress, iKey, oKey, interfaceId, true));
 }
 
 binder::Status NetdNativeService::ipSecRemoveTunnelInterface(const std::string& deviceName) {
     // Necessary locking done in IpSecService and kernel
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    netdutils::Status result = gCtls->xfrmCtrl.ipSecRemoveTunnelInterface(deviceName);
-    return binder::Status::ok();
+    return asBinderStatus(gCtls->xfrmCtrl.ipSecRemoveTunnelInterface(deviceName));
 }
 
 binder::Status NetdNativeService::setIPv6AddrGenMode(const std::string& ifName,
