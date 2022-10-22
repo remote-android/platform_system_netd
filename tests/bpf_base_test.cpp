@@ -77,8 +77,6 @@ TEST_F(BpfBasicTest, TestTrafficControllerSetUp) {
 }
 
 TEST_F(BpfBasicTest, TestSocketFilterSetUp) {
-    SKIP_IF_EXTENDED_BPF_NOT_SUPPORTED;
-
     ASSERT_EQ(0, access(CGROUP_SOCKET_PROG_PATH, R_OK));
     ASSERT_EQ(0, access(UID_PERMISSION_MAP_PATH, R_OK));
 }
