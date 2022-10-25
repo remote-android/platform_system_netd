@@ -50,6 +50,7 @@
 #include <android-base/scopeguard.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <android-base/test_utils.h>
 #include <android/multinetwork.h>
 #include <binder/IPCThreadState.h>
 #include <bpf/BpfMap.h>
@@ -5188,6 +5189,7 @@ std::cv_status MDnsBinderTest::getServiceAddress(int operationId,
 }
 
 TEST_F(MDnsBinderTest, EventListenerTest) {
+    SKIP_WITH_HWASAN;  // TODO(b/253513842): Re-enable.
     // Start the Binder thread pool.
     android::ProcessState::self()->startThreadPool();
 
