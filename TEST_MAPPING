@@ -3,6 +3,7 @@
         { "name": "netd_integration_test" },
         { "name": "netd_unit_test" },
         { "name": "netdclient_test" },
+        { "name": "netdclient_root_test" },
         { "name": "netdutils_test" }
     ],
     "postsubmit": [
@@ -18,6 +19,7 @@
         { "name": "netd_integration_test" },
         { "name": "netd_unit_test" },
         { "name": "netdclient_test" },
+        { "name": "netdclient_root_test" },
         { "name": "netdutils_test" }
     ]
 }
