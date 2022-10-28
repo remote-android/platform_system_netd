@@ -3516,23 +3516,6 @@ void NetdBinderTest::createVpnAndAppDefaultNetworkWithUid(
 
 namespace {
 
-class ScopedUidChange {
-  public:
-    explicit ScopedUidChange(uid_t uid) : mInputUid(uid) {
-        mStoredUid = geteuid();
-        if (mInputUid == mStoredUid) return;
-        EXPECT_TRUE(seteuid(uid) == 0);
-    }
-    ~ScopedUidChange() {
-        if (mInputUid == mStoredUid) return;
-        EXPECT_TRUE(seteuid(mStoredUid) == 0);
-    }
-
-  private:
-    uid_t mInputUid;
-    uid_t mStoredUid;
-};
-
 void clearQueue(int tunFd) {
     char buf[4096];
     int ret;
