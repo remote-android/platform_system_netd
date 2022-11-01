@@ -138,7 +138,6 @@ using android::net::TetherStatsParcel;
 using android::net::TunInterface;
 using android::net::UidRangeParcel;
 using android::net::UidRanges;
-using android::net::V4_FIXED_LOCAL_PREFIXES;
 using android::net::mdns::aidl::DiscoveryInfo;
 using android::net::mdns::aidl::GetAddressInfo;
 using android::net::mdns::aidl::IMDns;
@@ -1689,6 +1688,10 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
             {IP_RULE_V6, "2001:db8::/32", ""},
     };
 
+    // This should ba aligned with V4_FIXED_LOCAL_PREFIXES in system/netd/server/RouteController.cpp
+    // An expandable array for fixed local prefix though it's only one element now.
+    static const char* kV4LocalPrefixes[] = {"224.0.0.0/24"};
+
     // Add test physical network
     const auto& config = makeNativeNetworkConfig(TEST_NETID1, NativeNetworkType::PHYSICAL,
                                                  INetd::PERMISSION_NONE, false, false);
@@ -1705,8 +1708,8 @@ TEST_F(NetdBinderTest, NetworkAddRemoveRouteToLocalExcludeTable) {
     std::string localTableName = std::string(sTun.name() + "_local");
 
     // Verify the fixed routes exist in the local table.
-    for (size_t i = 0; i < std::size(V4_FIXED_LOCAL_PREFIXES); i++) {
-        expectNetworkRouteExists(IP_RULE_V4, sTun.name(), V4_FIXED_LOCAL_PREFIXES[i], "",
+    for (size_t i = 0; i < std::size(kV4LocalPrefixes); i++) {
+        expectNetworkRouteExists(IP_RULE_V4, sTun.name(), kV4LocalPrefixes[i], "",
                                  localTableName.c_str());
     }
 
