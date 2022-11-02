@@ -887,7 +887,7 @@ int NetworkController::checkUserNetworkAccessLocked(uid_t uid, unsigned netId) c
     // Check whether the UID's permission bits are sufficient to use the network.
     // Because the permission of the system default network is PERMISSION_NONE(0x0), apps can always
     // pass the check here when using the system default network.
-    Permission networkPermission = static_cast<PhysicalNetwork*>(network)->getPermission();
+    const Permission networkPermission = network->getPermission();
     return ((userPermission & networkPermission) == networkPermission) ? 0 : -EACCES;
 }
 

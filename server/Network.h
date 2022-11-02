@@ -17,6 +17,7 @@
 #pragma once
 
 #include "NetdConstants.h"
+#include "Permission.h"
 #include "UidRanges.h"
 
 #include <set>
@@ -48,6 +49,7 @@ public:
     std::string toString() const;
     std::string uidRangesToString() const;
     bool appliesToUser(uid_t uid, int32_t* subPriority) const;
+    virtual Permission getPermission() const = 0;
     [[nodiscard]] virtual int addUsers(const UidRanges&, int32_t /*subPriority*/) {
         return -EINVAL;
     };
