@@ -85,13 +85,6 @@ constexpr int32_t RULE_PRIORITY_DEFAULT_NETWORK                   = 31000;
 constexpr int32_t RULE_PRIORITY_UNREACHABLE                       = 32000;
 // clang-format on
 
-static const char* V4_FIXED_LOCAL_PREFIXES[] = {
-        // The multicast range is 224.0.0.0/4 but only limit it to 224.0.0.0/24 since the IPv4
-        // definitions are not as precise as for IPv6, it is the only range that the standards
-        // (RFC 2365 and RFC 5771) specify is link-local and must not be forwarded.
-        "224.0.0.0/24"  // Link-local multicast; non-internet routable
-};
-
 class UidRanges;
 
 class RouteController {
@@ -204,6 +197,14 @@ public:
 
   private:
     friend class RouteControllerTest;
+
+    // An expandable array for fixed local prefix though it's only one element now.
+    static constexpr const char* V4_FIXED_LOCAL_PREFIXES[] = {
+            // The multicast range is 224.0.0.0/4 but only limit it to 224.0.0.0/24 since the IPv4
+            // definitions are not as precise as for IPv6, it is the only range that the standards
+            // (RFC 2365 and RFC 5771) specify is link-local and must not be forwarded.
+            "224.0.0.0/24"  // Link-local multicast; non-internet routable
+    };
 
     static std::mutex sInterfaceToTableLock;
     static std::map<std::string, uint32_t> sInterfaceToTable GUARDED_BY(sInterfaceToTableLock);
