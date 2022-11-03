@@ -286,6 +286,10 @@ public:
     // Exposed for testing
     static constexpr size_t MAX_KEY_LENGTH = 128;
 
+    // Disable this warning since avoiding it makes the code unreadable.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
+
     // Container for the content of an XFRMA_ALG_CRYPT netlink attribute.
     // Exposed for testing
     struct nlattr_algo_crypt {
@@ -309,6 +313,8 @@ public:
         xfrm_algo_aead aead;
         uint8_t key[MAX_KEY_LENGTH];
     };
+
+#pragma clang diagnostic pop
 
     // Exposed for testing
     struct nlattr_user_tmpl {
