@@ -390,8 +390,12 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
     Slice attr_buf = drop(nlMsgSlice, NLA_ALIGN(sizeof(xfrm_usersa_info)));
 
     // Extract and check the encryption/authentication algorithm
-    XfrmController::nlattr_algo_crypt encryptAlgo{};
-    XfrmController::nlattr_algo_auth authAlgo{};
+    XfrmController::nlattr_algo_crypt _encryptAlgo{};
+    XfrmController::nlattr_algo_auth _authAlgo{};
+    // Need to use a pointer since you can't pass a structure with a variable
+    // sized array in a lambda.
+    XfrmController::nlattr_algo_crypt* const encryptAlgo = &_encryptAlgo;
+    XfrmController::nlattr_algo_auth* const authAlgo = &_authAlgo;
     XfrmController::nlattr_xfrm_mark mark{};
     XfrmController::nlattr_xfrm_output_mark outputmark{};
     XfrmController::nlattr_xfrm_interface_id xfrm_if_id{};
@@ -399,15 +403,15 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
                                const nlattr& attr, const Slice& attr_payload) {
         Slice buf = attr_payload;
         if (attr.nla_type == XFRMA_ALG_CRYPT) {
-            encryptAlgo.hdr = attr;
-            netdutils::extract(buf, encryptAlgo.crypt);
+            encryptAlgo->hdr = attr;
+            netdutils::extract(buf, encryptAlgo->crypt);
             buf = drop(buf, sizeof(xfrm_algo));
-            netdutils::extract(buf, encryptAlgo.key);
+            netdutils::extract(buf, encryptAlgo->key);
         } else if (attr.nla_type == XFRMA_ALG_AUTH_TRUNC) {
-            authAlgo.hdr = attr;
-            netdutils::extract(buf, authAlgo.auth);
+            authAlgo->hdr = attr;
+            netdutils::extract(buf, authAlgo->auth);
             buf = drop(buf, sizeof(xfrm_algo_auth));
-            netdutils::extract(buf, authAlgo.key);
+            netdutils::extract(buf, authAlgo->key);
         } else if (attr.nla_type == XFRMA_MARK) {
             mark.hdr = attr;
             netdutils::extract(buf, mark.mark);
@@ -425,9 +429,9 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
 
     // TODO: Use ContainerEq or ElementsAreArray to get better test failure messages.
     EXPECT_EQ(0, memcmp(reinterpret_cast<void*>(cryptKey.data()),
-                        reinterpret_cast<void*>(&encryptAlgo.key), KEY_LENGTH));
+                        reinterpret_cast<void*>(&encryptAlgo->key), KEY_LENGTH));
     EXPECT_EQ(0, memcmp(reinterpret_cast<void*>(authKey.data()),
-                        reinterpret_cast<void*>(&authAlgo.key), KEY_LENGTH));
+                        reinterpret_cast<void*>(&authAlgo->key), KEY_LENGTH));
 
     if (mode == XfrmMode::TUNNEL) {
         if (params.xfrmInterfacesEnabled) {
