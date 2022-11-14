@@ -249,7 +249,7 @@ class NetdBinderTest : public NetNativeTestBase {
 
     void setupNetworkRoutesForVpnAndDefaultNetworks(
             int systemDefaultNetId, int appDefaultNetId, int vpnNetId, int otherNetId, bool secure,
-            bool excludeLocalRoutes, bool testV6, bool differentLocalAddr,
+            bool testV6, bool differentLocalRoutes,
             std::vector<UidRangeParcel>&& appDefaultUidRanges,
             std::vector<UidRangeParcel>&& vpnUidRanges);
 
@@ -3625,9 +3625,10 @@ void expectVpnFallthroughRuleExists(const std::string& ifName, int vpnNetId) {
 }
 
 void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable, uid_t uid,
-                               const TunInterface& fallthroughNetwork,
+                               uid_t uidNotInVpn, const TunInterface& fallthroughNetwork,
                                const TunInterface& vpnNetwork, const TunInterface& otherNetwork,
-                               int vpnNetId = TEST_NETID2, int fallthroughNetId = TEST_NETID1) {
+                               int vpnNetId = TEST_NETID2, int fallthroughNetId = TEST_NETID1,
+                               int otherNetId = TEST_NETID3) {
     // Set default network to NETID_UNSET
     EXPECT_TRUE(netdService->networkSetDefault(NETID_UNSET).isOk());
 
@@ -3704,6 +3705,25 @@ void expectVpnFallthroughWorks(android::net::INetd* netdService, bool bypassable
         EXPECT_FALSE(sendIPv6PacketFromUid(uid, outsideVpnAddr, &fwmark, fallthroughFd));
         EXPECT_FALSE(sendIPv6PacketFromUid(uid, insideVpnAddr, &fwmark, fallthroughFd));
     }
+
+    // Add per-app uid ranges.
+    EXPECT_TRUE(netdService
+                        ->networkAddUidRanges(otherNetId,
+                                              {makeUidRangeParcel(uidNotInVpn, uidNotInVpn)})
+                        .isOk());
+
+    int appDefaultFd = otherNetwork.getFdForTesting();
+
+    // UID is not inside the VPN range, so it won't go to vpn network.
+    // It won't fall into per app local rule because it's explicitly selected.
+    EXPECT_TRUE(sendIPv6PacketFromUid(uidNotInVpn, outsideVpnAddr, &fwmark, fallthroughFd));
+    EXPECT_TRUE(sendIPv6PacketFromUid(uidNotInVpn, insideVpnAddr, &fwmark, fallthroughFd));
+
+    // Reset explicitly selection.
+    setNetworkForProcess(NETID_UNSET);
+    // Connections can go to app default network.
+    EXPECT_TRUE(sendIPv6PacketFromUid(uidNotInVpn, insideVpnAddr, &fwmark, appDefaultFd));
+    EXPECT_TRUE(sendIPv6PacketFromUid(uidNotInVpn, outsideVpnAddr, &fwmark, appDefaultFd));
 }
 
 }  // namespace
@@ -3712,14 +3732,16 @@ TEST_F(NetdBinderTest, SecureVPNFallthrough) {
     createVpnNetworkWithUid(true /* secure */, TEST_UID1);
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
-    expectVpnFallthroughWorks(mNetd.get(), false /* bypassable */, TEST_UID1, sTun, sTun2, sTun3);
+    expectVpnFallthroughWorks(mNetd.get(), false /* bypassable */, TEST_UID1, TEST_UID2, sTun,
+                              sTun2, sTun3);
 }
 
 TEST_F(NetdBinderTest, BypassableVPNFallthrough) {
     createVpnNetworkWithUid(false /* secure */, TEST_UID1);
     // Get current default network NetId
     ASSERT_TRUE(mNetd->networkGetDefault(&mStoredDefaultNetwork).isOk());
-    expectVpnFallthroughWorks(mNetd.get(), true /* bypassable */, TEST_UID1, sTun, sTun2, sTun3);
+    expectVpnFallthroughWorks(mNetd.get(), true /* bypassable */, TEST_UID1, TEST_UID2, sTun, sTun2,
+                              sTun3);
 }
 
 namespace {
@@ -4368,7 +4390,8 @@ class VpnLocalRoutesParameterizedTest
     : public NetdBinderTest,
       public testing::WithParamInterface<std::tuple<int, int, bool, bool, bool, bool>> {
   protected:
-    // Local/non-local addresses based on the route added above.
+    // Local/non-local addresses based on the route added in
+    // setupNetworkRoutesForVpnAndDefaultNetworks.
     in_addr V4_LOCAL_ADDR = {htonl(0xC0A80008)};      // 192.168.0.8
     in_addr V4_APP_LOCAL_ADDR = {htonl(0xAC100008)};  // 172.16.0.8
     in_addr V4_GLOBAL_ADDR = {htonl(0x08080808)};     // 8.8.8.8
@@ -4385,8 +4408,8 @@ class VpnLocalRoutesParameterizedTest
 };
 
 const int SEND_TO_GLOBAL = 0;
-const int SEND_TO_SYSTEM_LOCAL = 1;
-const int SEND_TO_APP_LOCAL = 2;
+const int SEND_TO_SYSTEM_DEFAULT_LOCAL = 1;
+const int SEND_TO_PER_APP_DEFAULT_LOCAL = 2;
 
 // Exercise the combination of different explicitly selected network, different uid, local/non-local
 // address on local route exclusion VPN. E.g.
@@ -4397,7 +4420,8 @@ const int SEND_TO_APP_LOCAL = 2;
 INSTANTIATE_TEST_SUITE_P(
         PerAppDefaultNetwork, VpnLocalRoutesParameterizedTest,
         testing::Combine(testing::Values(SYSTEM_DEFAULT_NETID, APP_DEFAULT_NETID, NETID_UNSET),
-                         testing::Values(SEND_TO_GLOBAL, SEND_TO_SYSTEM_LOCAL, SEND_TO_APP_LOCAL),
+                         testing::Values(SEND_TO_GLOBAL, SEND_TO_SYSTEM_DEFAULT_LOCAL,
+                                         SEND_TO_PER_APP_DEFAULT_LOCAL),
                          testing::Bool(), testing::Bool(), testing::Bool(), testing::Bool()),
         [](const testing::TestParamInfo<std::tuple<int, int, bool, bool, bool, bool>>& info) {
             std::string explicitlySelected;
@@ -4420,10 +4444,10 @@ INSTANTIATE_TEST_SUITE_P(
                 case SEND_TO_GLOBAL:
                     sendToAddr = "GlobalAddr";
                     break;
-                case SEND_TO_SYSTEM_LOCAL:
+                case SEND_TO_SYSTEM_DEFAULT_LOCAL:
                     sendToAddr = "SystemLocal";
                     break;
-                case SEND_TO_APP_LOCAL:
+                case SEND_TO_PER_APP_DEFAULT_LOCAL:
                     sendToAddr = "AppLocal";
                     break;
                 default:
@@ -4442,16 +4466,16 @@ INSTANTIATE_TEST_SUITE_P(
                     std::get<4>(info.param) ? std::string("v6") : std::string("v4");
 
             // Apply the same or different local address in app default and system default.
-            const std::string differentLocalAddr = std::get<5>(info.param)
-                                                           ? std::string("DifferentLocalAddr")
-                                                           : std::string("SameLocalAddr");
+            const std::string differentLocalRoutes = std::get<5>(info.param)
+                                                             ? std::string("DifferentLocalRoutes")
+                                                             : std::string("SameLocalAddr");
 
             return explicitlySelected + "_uid" + isSubjectToVpn + hasAppDefaultNetwork +
-                   "Range_with" + testV6 + sendToAddr + differentLocalAddr;
+                   "Range_with" + testV6 + sendToAddr + differentLocalRoutes;
         });
 
 int getTargetIfaceForLocalRoutesExclusion(bool isSubjectToVpn, bool hasAppDefaultNetwork,
-                                          bool differentLocalAddr, int sendToAddr,
+                                          bool differentLocalRoutes, int sendToAddr,
                                           int selectedNetId, int fallthroughFd, int appDefaultFd,
                                           int vpnFd) {
     int expectedIface;
@@ -4462,13 +4486,13 @@ int getTargetIfaceForLocalRoutesExclusion(bool isSubjectToVpn, bool hasAppDefaul
             case SEND_TO_GLOBAL:
                 expectedIface = vpnFd;
                 break;
-            case SEND_TO_SYSTEM_LOCAL:
+            case SEND_TO_SYSTEM_DEFAULT_LOCAL:
                 // Go to app default if the app default and system default are the same range
                 // TODO(b/237351736): It should go to VPN if the system local and app local are
                 // different.
-                expectedIface = differentLocalAddr ? fallthroughFd : appDefaultFd;
+                expectedIface = differentLocalRoutes ? fallthroughFd : appDefaultFd;
                 break;
-            case SEND_TO_APP_LOCAL:
+            case SEND_TO_PER_APP_DEFAULT_LOCAL:
                 expectedIface = appDefaultFd;
                 break;
             default:
@@ -4479,21 +4503,21 @@ int getTargetIfaceForLocalRoutesExclusion(bool isSubjectToVpn, bool hasAppDefaul
             case SEND_TO_GLOBAL:
                 expectedIface = vpnFd;
                 break;
-            case SEND_TO_SYSTEM_LOCAL:
+            case SEND_TO_SYSTEM_DEFAULT_LOCAL:
                 // TODO(b/237351736): It should go to app default if the system local and app local
                 // are different.
                 expectedIface = fallthroughFd;
                 break;
-            case SEND_TO_APP_LOCAL:
+            case SEND_TO_PER_APP_DEFAULT_LOCAL:
                 // Go to system default if the system default and app default are the same range.
-                expectedIface = differentLocalAddr ? vpnFd : fallthroughFd;
+                expectedIface = differentLocalRoutes ? vpnFd : fallthroughFd;
                 break;
             default:
                 expectedIface = -1;  // should not happen
         }
     } else if (!isSubjectToVpn && hasAppDefaultNetwork) {
         expectedIface = appDefaultFd;
-    } else {  // !isVpnUidRange && !isAppDefaultRange
+    } else {  // !isSubjectToVpn && !hasAppDefaultNetwork
         expectedIface = fallthroughFd;
     }
 
@@ -4513,22 +4537,23 @@ int getTargetIfaceForLocalRoutesExclusion(bool isSubjectToVpn, bool hasAppDefaul
     return expectedIface;
 }
 
-// This routing configurations verify the worst case where both physical networks and vpn
-// network have the same local address.
-// This also set as system default routing for verifying different app default and system
-// default routing.
+// Routes configured on the system default network and on the VPN.
+// This allows the test to verify the worst case where the physical network and the VPN configure
+// the same routes. This ensures that routing is determined by the IP rules and doesn't just happen
+// to work because the routes don't overlap. If differentLocalRoutes is false, these routes are also
+// configured on the per-app default network.
+// For both IPv4 and IPv6, the first route is local, the second is not.
 std::vector<std::string> V6_ROUTES = {"2001:db8:cafe::/48", "::/0"};
 std::vector<std::string> V4_ROUTES = {"192.168.0.0/16", "0.0.0.0/0"};
 
-// Routing configuration used for verifying different app default and system default routing
-// configuration
+// Routes configured on the per-app default network if differentLocalRoutes is true.
+// For both IPv4 and IPv6, the first route is local, the second is not.
 std::vector<std::string> V6_APP_DEFAULT_ROUTES = {"2607:f0d0:1234::/48", "::/0"};
 std::vector<std::string> V4_APP_DEFAULT_ROUTES = {"172.16.0.0/16", "0.0.0.0/0"};
 
 void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
         int systemDefaultNetId, int appDefaultNetId, int vpnNetId, int otherNetId, bool secure,
-        bool excludeLocalRoutes, bool testV6, bool differentLocalAddr,
-        std::vector<UidRangeParcel>&& appDefaultUidRanges,
+        bool testV6, bool differentLocalRoutes, std::vector<UidRangeParcel>&& appDefaultUidRanges,
         std::vector<UidRangeParcel>&& vpnUidRanges) {
     // Create a physical network on sTun, and set it as the system default network
     createAndSetDefaultNetwork(systemDefaultNetId, sTun.name());
@@ -4547,15 +4572,15 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
 
     // Setup app default routing.
     std::vector<std::string> appDefaultRoutes =
-            testV6 ? (differentLocalAddr ? V6_APP_DEFAULT_ROUTES : V6_ROUTES)
-                   : (differentLocalAddr ? V4_APP_DEFAULT_ROUTES : V4_ROUTES);
+            testV6 ? (differentLocalRoutes ? V6_APP_DEFAULT_ROUTES : V6_ROUTES)
+                   : (differentLocalRoutes ? V4_APP_DEFAULT_ROUTES : V4_ROUTES);
     for (const auto& route : appDefaultRoutes) {
         EXPECT_TRUE(mNetd->networkAddRoute(appDefaultNetId, sTun2.name(), route, "").isOk());
     }
 
     // Create a bypassable VPN on sTun3.
     auto config = makeNativeNetworkConfig(vpnNetId, NativeNetworkType::VIRTUAL,
-                                          INetd::PERMISSION_NONE, secure, excludeLocalRoutes);
+                                          INetd::PERMISSION_NONE, secure, true);
     EXPECT_TRUE(mNetd->networkCreate(config).isOk());
     EXPECT_TRUE(mNetd->networkAddInterface(vpnNetId, sTun3.name()).isOk());
 
@@ -4568,7 +4593,8 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
     // Create another interface that is neither system default nor the app default to make sure
     // the traffic won't be mis-routed.
     createPhysicalNetwork(otherNetId, sTun4.name());
-
+    EXPECT_TRUE(mNetd->networkAddRoute(otherNetId, sTun4.name(), testV6 ? "::/0" : "0.0.0.0/0", "")
+                        .isOk());
     // Add per-app uid ranges.
     EXPECT_TRUE(mNetd->networkAddUidRanges(appDefaultNetId, appDefaultUidRanges).isOk());
 
@@ -4576,31 +4602,30 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
     EXPECT_TRUE(mNetd->networkAddUidRanges(vpnNetId, vpnUidRanges).isOk());
 }
 
-// Routes are in approximately the following order for bypassable VPNs that allow local network
+// Rules are in approximately the following order for bypassable VPNs that allow local network
 // access:
-//    - Per-app default local routes (UID guarded)
-//    - System-wide default local routes
-//    - VPN catch-all routes (UID guarded)
-//    - Per-app default global routes (UID guarded)
-//    - System-wide default global routes
+//    - Local routes to the per-app default network (UID guarded)
+//    - Local routes to the system default network
+//    - Both local and global routs to VPN network (UID guarded)
+//    - Global routes to per-app default network(UID guarded)
+//    - Global routes to system default network
 TEST_P(VpnLocalRoutesParameterizedTest, localRoutesExclusion) {
     int selectedNetId;
     int sendToAddr;
     bool isSubjectToVpn;
     bool hasAppDefaultNetwork;
     bool testV6;
-    bool differentLocalAddr;
+    bool differentLocalRoutes;
 
     std::tie(selectedNetId, sendToAddr, isSubjectToVpn, hasAppDefaultNetwork, testV6,
-             differentLocalAddr) = GetParam();
+             differentLocalRoutes) = GetParam();
 
-    // std::vector<std::string> routes = testV6 ? V6_ROUTES : V4_ROUTES;
     setupNetworkRoutesForVpnAndDefaultNetworks(
             SYSTEM_DEFAULT_NETID, APP_DEFAULT_NETID, VPN_NETID, TEST_NETID4, false /* secure */,
-            true /* excludeLocalRoutes */, testV6,
-            // Add a local route first to setup local table.
-            differentLocalAddr, {makeUidRangeParcel(TEST_UID2, TEST_UID1)},
-            {makeUidRangeParcel(TEST_UID3, TEST_UID2)});
+            testV6, differentLocalRoutes,
+            // Setup uid ranges for app default and VPN. Configure TEST_UID2 into both app default
+            // and VPN to verify the behavior when the uid exists in both network.
+            {makeUidRangeParcel(TEST_UID2, TEST_UID1)}, {makeUidRangeParcel(TEST_UID3, TEST_UID2)});
 
     int fallthroughFd = sTun.getFdForTesting();
     int appDefaultFd = sTun2.getFdForTesting();
@@ -4612,19 +4637,23 @@ TEST_P(VpnLocalRoutesParameterizedTest, localRoutesExclusion) {
     int targetUid;
 
     // Setup the expected testing uid
-    if (isSubjectToVpn && hasAppDefaultNetwork) {
-        targetUid = TEST_UID2;
-    } else if (isSubjectToVpn && !hasAppDefaultNetwork) {
-        targetUid = TEST_UID3;
-    } else if (!isSubjectToVpn && hasAppDefaultNetwork) {
-        targetUid = TEST_UID1;
+    if (isSubjectToVpn) {
+        if (hasAppDefaultNetwork) {
+            targetUid = TEST_UID2;
+        } else {
+            targetUid = TEST_UID3;
+        }
     } else {
-        targetUid = AID_ROOT;
+        if (hasAppDefaultNetwork) {
+            targetUid = TEST_UID1;
+        } else {
+            targetUid = TEST_UID4;  // Not in any of the UID ranges.
+        }
     }
 
-    // Get target interface for the traffic.
-    int targetIface = getTargetIfaceForLocalRoutesExclusion(
-            isSubjectToVpn, hasAppDefaultNetwork, differentLocalAddr, sendToAddr, selectedNetId,
+    // Get expected interface for the traffic.
+    int expectedIface = getTargetIfaceForLocalRoutesExclusion(
+            isSubjectToVpn, hasAppDefaultNetwork, differentLocalRoutes, sendToAddr, selectedNetId,
             fallthroughFd, appDefaultFd, vpnFd);
 
     // Verify the packets are sent to the expected interface.
@@ -4635,35 +4664,35 @@ TEST_P(VpnLocalRoutesParameterizedTest, localRoutesExclusion) {
             case SEND_TO_GLOBAL:
                 addr = V6_GLOBAL_ADDR;
                 break;
-            case SEND_TO_SYSTEM_LOCAL:
+            case SEND_TO_SYSTEM_DEFAULT_LOCAL:
                 addr = V6_LOCAL_ADDR;
                 break;
-            case SEND_TO_APP_LOCAL:
-                addr = differentLocalAddr ? V6_APP_LOCAL_ADDR : V6_LOCAL_ADDR;
+            case SEND_TO_PER_APP_DEFAULT_LOCAL:
+                addr = differentLocalRoutes ? V6_APP_LOCAL_ADDR : V6_LOCAL_ADDR;
                 break;
             default:
                 break;
                 // should not happen
         }
-        EXPECT_TRUE(sendIPv6PacketFromUid(targetUid, addr, &fwmark, targetIface));
+        EXPECT_TRUE(sendIPv6PacketFromUid(targetUid, addr, &fwmark, expectedIface));
     } else {
         in_addr addr;
         switch (sendToAddr) {
             case SEND_TO_GLOBAL:
                 addr = V4_GLOBAL_ADDR;
                 break;
-            case SEND_TO_SYSTEM_LOCAL:
+            case SEND_TO_SYSTEM_DEFAULT_LOCAL:
                 addr = V4_LOCAL_ADDR;
                 break;
-            case SEND_TO_APP_LOCAL:
-                addr = differentLocalAddr ? V4_APP_LOCAL_ADDR : V4_LOCAL_ADDR;
+            case SEND_TO_PER_APP_DEFAULT_LOCAL:
+                addr = differentLocalRoutes ? V4_APP_LOCAL_ADDR : V4_LOCAL_ADDR;
                 break;
             default:
                 break;
                 // should not happen
         }
 
-        EXPECT_TRUE(sendIPv4PacketFromUid(targetUid, addr, &fwmark, targetIface));
+        EXPECT_TRUE(sendIPv4PacketFromUid(targetUid, addr, &fwmark, expectedIface));
     }
 }
 
