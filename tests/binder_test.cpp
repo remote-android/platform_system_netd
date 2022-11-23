@@ -4543,14 +4543,12 @@ int getTargetIfaceForLocalRoutesExclusion(bool isSubjectToVpn, bool hasAppDefaul
 // to work because the routes don't overlap. If differentLocalRoutes is false, these routes are also
 // configured on the per-app default network.
 // For both IPv4 and IPv6, the first route is local, the second is not.
-std::vector<std::string> V6_ROUTES = {"2001:db8:cafe::/48", "::/0"};
-std::vector<std::string> V4_ROUTES = {"192.168.0.0/16", "0.0.0.0/0"};
-
+std::vector<std::string> SYSTEM_DEFAULT_ROUTES = {"192.168.0.0/16", "0.0.0.0/0",
+                                                  "2001:db8:cafe::/48", "::/0"};
 // Routes configured on the per-app default network if differentLocalRoutes is true.
 // For both IPv4 and IPv6, the first route is local, the second is not.
-std::vector<std::string> V6_APP_DEFAULT_ROUTES = {"2607:f0d0:1234::/48", "::/0"};
-std::vector<std::string> V4_APP_DEFAULT_ROUTES = {"172.16.0.0/16", "0.0.0.0/0"};
-
+std::vector<std::string> APP_DEFAULT_ROUTES = {"172.16.0.0/16", "0.0.0.0/0", "2607:f0d0:1234::/48",
+                                               "::/0"};
 void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
         int systemDefaultNetId, int appDefaultNetId, int vpnNetId, int otherNetId, bool secure,
         bool testV6, bool differentLocalRoutes, std::vector<UidRangeParcel>&& appDefaultUidRanges,
@@ -4562,8 +4560,7 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
     // are routed correctly.
 
     // Setup system default routing.
-    std::vector<std::string> systemDefaultRoutes = testV6 ? V6_ROUTES : V4_ROUTES;
-    for (const auto& route : systemDefaultRoutes) {
+    for (const auto& route : SYSTEM_DEFAULT_ROUTES) {
         EXPECT_TRUE(mNetd->networkAddRoute(systemDefaultNetId, sTun.name(), route, "").isOk());
     }
 
@@ -4572,8 +4569,7 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
 
     // Setup app default routing.
     std::vector<std::string> appDefaultRoutes =
-            testV6 ? (differentLocalRoutes ? V6_APP_DEFAULT_ROUTES : V6_ROUTES)
-                   : (differentLocalRoutes ? V4_APP_DEFAULT_ROUTES : V4_ROUTES);
+            (differentLocalRoutes ? APP_DEFAULT_ROUTES : SYSTEM_DEFAULT_ROUTES);
     for (const auto& route : appDefaultRoutes) {
         EXPECT_TRUE(mNetd->networkAddRoute(appDefaultNetId, sTun2.name(), route, "").isOk());
     }
@@ -4585,8 +4581,7 @@ void NetdBinderTest::setupNetworkRoutesForVpnAndDefaultNetworks(
     EXPECT_TRUE(mNetd->networkAddInterface(vpnNetId, sTun3.name()).isOk());
 
     // Setup vpn routing.
-    std::vector<std::string> vpnRoutes = testV6 ? V6_ROUTES : V4_ROUTES;
-    for (const auto& route : vpnRoutes) {
+    for (const auto& route : SYSTEM_DEFAULT_ROUTES) {
         EXPECT_TRUE(mNetd->networkAddRoute(vpnNetId, sTun3.name(), route, "").isOk());
     }
 
