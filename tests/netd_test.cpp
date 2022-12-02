@@ -93,6 +93,7 @@ TEST(NetdSELinuxTest, CheckProperBpfLabels) {
     assertBpfContext("/sys/fs/bpf/netd_readonly", "fs_bpf_netd_readonly");
     assertBpfContext("/sys/fs/bpf/netd_shared", "fs_bpf_netd_shared");
     assertBpfContext("/sys/fs/bpf/vendor", "fs_bpf_vendor");
+    assertBpfContext("/sys/fs/bpf/loader", "fs_bpf_loader");
 }
 
 bool isTetheringInProcess() {
