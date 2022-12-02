@@ -272,7 +272,8 @@ binder::Status NetdNativeService::bandwidthRemoveNiceApp(int32_t) {
 // tests.
 binder::Status NetdNativeService::networkCreatePhysical(int32_t netId, int32_t permission) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    int ret = gCtls->netCtrl.createPhysicalNetwork(netId, convertPermission(permission));
+    int ret = gCtls->netCtrl.createPhysicalNetwork(netId, convertPermission(permission),
+                                                   false /* local */);
     return statusFromErrcode(ret);
 }
 
@@ -292,8 +293,11 @@ binder::Status NetdNativeService::networkCreate(const NativeNetworkConfig& confi
     ENFORCE_NETWORK_STACK_PERMISSIONS();
     int ret = -EINVAL;
     if (config.networkType == NativeNetworkType::PHYSICAL) {
-        ret = gCtls->netCtrl.createPhysicalNetwork(config.netId,
-                                                   convertPermission(config.permission));
+        ret = gCtls->netCtrl.createPhysicalNetwork(
+                config.netId, convertPermission(config.permission), false /* isLocalNetwork */);
+    } else if (config.networkType == NativeNetworkType::PHYSICAL_LOCAL) {
+        ret = gCtls->netCtrl.createPhysicalNetwork(
+                config.netId, convertPermission(config.permission), true /* isLocalNetwork */);
     } else if (config.networkType == NativeNetworkType::VIRTUAL) {
         ret = gCtls->netCtrl.createVirtualNetwork(config.netId, config.secure, config.vpnType,
                                                   config.excludeLocalRoutes);
