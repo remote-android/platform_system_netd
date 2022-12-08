@@ -85,7 +85,6 @@ cc_test {
     srcs: [
         ":netd_integration_test_shared",
         "binder_test.cpp",
-        "bpf_base_test.cpp",
         "kernel_test.cpp",
         "netd_client_test.cpp",
         "netd_test.cpp",
