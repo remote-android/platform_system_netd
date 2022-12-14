@@ -21,6 +21,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <linux/if.h>
+#include <net/if.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <pthread.h>

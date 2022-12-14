@@ -89,7 +89,6 @@ cc_test {
         "netd_test.cpp",
     ],
     include_dirs: ["system/netd/server"],
-    header_libs: ["bpf_connectivity_headers"],
     shared_libs: [
         "libbase",
         "libbinder",

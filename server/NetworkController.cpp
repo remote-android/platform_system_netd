@@ -30,6 +30,7 @@
 #include <android-base/strings.h>
 #include <cutils/misc.h>  // FIRST_APPLICATION_UID
 #include <netd_resolv/resolv.h>
+#include <net/if.h>
 #include "log/log.h"
 
 #include "Controllers.h"

@@ -24,7 +24,6 @@
 #include <vector>
 
 #include "NetdConstants.h"
-#include "bpf/BpfUtils.h"
 
 namespace android {
 namespace net {
