@@ -105,7 +105,7 @@ public:
     unsigned getNetworkForInterface(const char* interface) const;
     bool isVirtualNetwork(unsigned netId) const;
 
-    [[nodiscard]] int createPhysicalNetwork(unsigned netId, Permission permission);
+    [[nodiscard]] int createPhysicalNetwork(unsigned netId, Permission permission, bool local);
     [[nodiscard]] int createPhysicalOemNetwork(Permission permission, unsigned* netId);
     [[nodiscard]] int createVirtualNetwork(unsigned netId, bool secure, NativeVpnType vpnType,
                                            bool excludeLocalRoutes);
@@ -165,7 +165,8 @@ public:
     Network* getPhysicalOrUnreachableNetworkForUserLocked(uid_t uid) const;
     Permission getPermissionForUserLocked(uid_t uid) const;
     int checkUserNetworkAccessLocked(uid_t uid, unsigned netId) const;
-    [[nodiscard]] int createPhysicalNetworkLocked(unsigned netId, Permission permission);
+    [[nodiscard]] int createPhysicalNetworkLocked(unsigned netId, Permission permission,
+                                                  bool local);
 
     [[nodiscard]] int modifyRoute(unsigned netId, const char* interface, const char* destination,
                                   const char* nexthop, RouteOperation op, bool legacy, uid_t uid,
