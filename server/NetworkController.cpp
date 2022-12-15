@@ -382,7 +382,8 @@ bool NetworkController::isVirtualNetworkLocked(unsigned netId) const {
     return network && network->isVirtual();
 }
 
-int NetworkController::createPhysicalNetworkLocked(unsigned netId, Permission permission) {
+int NetworkController::createPhysicalNetworkLocked(unsigned netId, Permission permission,
+                                                   bool local) {
     if (!((MIN_NET_ID <= netId && netId <= MAX_NET_ID) ||
           (MIN_OEM_ID <= netId && netId <= MAX_OEM_ID))) {
         ALOGE("invalid netId %u", netId);
@@ -394,7 +395,7 @@ int NetworkController::createPhysicalNetworkLocked(unsigned netId, Permission pe
         return -EEXIST;
     }
 
-    PhysicalNetwork* physicalNetwork = new PhysicalNetwork(netId, mDelegateImpl);
+    PhysicalNetwork* physicalNetwork = new PhysicalNetwork(netId, mDelegateImpl, local);
     if (int ret = physicalNetwork->setPermission(permission)) {
         ALOGE("inconceivable! setPermission cannot fail on an empty network");
         delete physicalNetwork;
@@ -408,9 +409,9 @@ int NetworkController::createPhysicalNetworkLocked(unsigned netId, Permission pe
     return 0;
 }
 
-int NetworkController::createPhysicalNetwork(unsigned netId, Permission permission) {
+int NetworkController::createPhysicalNetwork(unsigned netId, Permission permission, bool local) {
     ScopedWLock lock(mRWLock);
-    return createPhysicalNetworkLocked(netId, permission);
+    return createPhysicalNetworkLocked(netId, permission, local);
 }
 
 int NetworkController::createPhysicalOemNetwork(Permission permission, unsigned *pNetId) {
@@ -431,7 +432,7 @@ int NetworkController::createPhysicalOemNetwork(Permission permission, unsigned 
         return -ENONET;
     }
 
-    int ret = createPhysicalNetworkLocked(*pNetId, permission);
+    int ret = createPhysicalNetworkLocked(*pNetId, permission, false /* local */);
     if (ret) {
         *pNetId = 0;
     }

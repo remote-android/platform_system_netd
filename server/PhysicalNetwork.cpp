@@ -56,8 +56,16 @@ namespace {
 
 PhysicalNetwork::Delegate::~Delegate() {}
 
-PhysicalNetwork::PhysicalNetwork(unsigned netId, PhysicalNetwork::Delegate* delegate) :
-        Network(netId), mDelegate(delegate), mPermission(PERMISSION_NONE), mIsDefault(false) {
+PhysicalNetwork::PhysicalNetwork(unsigned netId, PhysicalNetwork::Delegate* delegate, bool local)
+    : Network(netId),
+      mDelegate(delegate),
+      mPermission(PERMISSION_NONE),
+      mIsDefault(false),
+      mIsLocalNetwork(local) {
+    // TODO : remove this log, it's only present to avoid -Wunused-private-field from blocking
+    // compilation
+    ALOGI("Created physical network instance netId=%d local=%s", netId,
+          mIsLocalNetwork ? "true" : "false");
 }
 
 PhysicalNetwork::~PhysicalNetwork() {}
