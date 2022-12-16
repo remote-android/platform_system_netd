@@ -58,6 +58,7 @@ bool isGsiImage() {
  * CONFIG_NET_CLS_MATCHALL=y
  * CONFIG_NET_ACT_POLICE=y
  * CONFIG_NET_ACT_BPF=y
+ * CONFIG_BPF_JIT=y
  */
 TEST(KernelTest, TestRateLimitingSupport) {
     if (isGsiImage()) {
@@ -68,6 +69,7 @@ TEST(KernelTest, TestRateLimitingSupport) {
     ASSERT_TRUE(configVerifier.hasOption("CONFIG_NET_CLS_MATCHALL"));
     ASSERT_TRUE(configVerifier.hasOption("CONFIG_NET_ACT_POLICE"));
     ASSERT_TRUE(configVerifier.hasOption("CONFIG_NET_ACT_BPF"));
+    ASSERT_TRUE(configVerifier.hasOption("CONFIG_BPF_JIT"));
 }
 
 }  // namespace net
