@@ -36,7 +36,6 @@
 #include <netdutils/Stopwatch.h>
 
 #include "NetdConstants.h"
-#include "bpf/BpfUtils.h"
 
 #define XT_LOCK_NAME "/system/etc/xtables.lock"
 #define XT_LOCK_ATTEMPTS 10
