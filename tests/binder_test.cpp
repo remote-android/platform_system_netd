@@ -53,8 +53,6 @@
 #include <android-base/test_utils.h>
 #include <android/multinetwork.h>
 #include <binder/IPCThreadState.h>
-#include <bpf/BpfMap.h>
-#include <bpf/BpfUtils.h>
 #include <com/android/internal/net/BnOemNetdUnsolicitedEventListener.h>
 #include <com/android/internal/net/IOemNetd.h>
 #include <cutils/multiuser.h>

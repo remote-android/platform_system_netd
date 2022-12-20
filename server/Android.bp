@@ -45,7 +45,6 @@ cc_library_static {
         "system/netd/include",
         "system/netd/server/binder",
     ],
-    header_libs: ["bpf_headers"],
     srcs: [
         "BandwidthController.cpp",
         "Controllers.cpp",
@@ -101,7 +100,6 @@ cc_binary {
     required: [
         "bpfloader",
     ],
-    header_libs: ["bpf_headers"],
     shared_libs: [
         "android.system.net.netd@1.0",
         "android.system.net.netd@1.1",
@@ -208,7 +206,6 @@ cc_test {
         "system/netd/server/binder",
         "system/netd/tests",
     ],
-    header_libs: ["bpf_headers"],
     tidy_timeout_srcs: [
         "BandwidthControllerTest.cpp",
         "InterfaceControllerTest.cpp",
