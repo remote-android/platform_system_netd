@@ -231,6 +231,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     binder::Status ipSecRemoveTunnelInterface(const std::string& deviceName);
 
+    binder::Status ipSecMigrate(const IpSecMigrateInfoParcel& migrateInfo);
+
     // Idletimer-related commands
     binder::Status idletimerAddInterface(const std::string& ifName, int32_t timeout,
                                          const std::string& classLabel) override;
