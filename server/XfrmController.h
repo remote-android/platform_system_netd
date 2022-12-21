@@ -115,6 +115,8 @@ struct XfrmEndpointPair {
 
 // minimally sufficient structure to match either an SA or a Policy
 struct XfrmCommonInfo : XfrmEndpointPair {
+    // TODO: b/259298885 rename "transformId" to "requestId" and update
+    // all the related methods/fields/logs
     int transformId; // requestId
     int spi;
     xfrm_mark mark;
