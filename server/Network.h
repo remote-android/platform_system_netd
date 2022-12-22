@@ -48,6 +48,7 @@ public:
 
     std::string toString() const;
     std::string uidRangesToString() const;
+    std::string allowedUidsToString() const;
     bool appliesToUser(uid_t uid, int32_t* subPriority) const;
     virtual Permission getPermission() const = 0;
     [[nodiscard]] virtual int addUsers(const UidRanges&, int32_t /*subPriority*/) {
@@ -64,8 +65,11 @@ public:
     virtual bool isValidSubPriority(int32_t /*priority*/) { return false; }
     virtual void addToUidRangeMap(const UidRanges& uidRanges, int32_t subPriority);
     virtual void removeFromUidRangeMap(const UidRanges& uidRanges, int32_t subPriority);
+    void clearAllowedUids();
+    void setAllowedUids(const UidRanges& uidRanges);
+    bool isUidAllowed(uid_t uid);
 
-protected:
+  protected:
     explicit Network(unsigned netId, bool secure = false);
     bool canAddUidRanges(const UidRanges& uidRanges) const;
 
@@ -74,8 +78,11 @@ protected:
     // Each subsidiary priority maps to a set of UID ranges of a feature.
     std::map<int32_t, UidRanges> mUidRangeMap;
     const bool mSecure;
+    // UIDs that can explicitly select this network. It means no restriction for all UIDs if the
+    // optional variable has no value.
+    std::optional<UidRanges> mUidsAbleToSelectThisNetwork;
 
-private:
+  private:
     enum Action {
         REMOVE,
         ADD,

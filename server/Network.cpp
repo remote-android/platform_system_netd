@@ -83,6 +83,13 @@ std::string Network::uidRangesToString() const {
     return result.str();
 }
 
+std::string Network::allowedUidsToString() const {
+    if (!mUidsAbleToSelectThisNetwork) {
+        return "unrestricted";
+    }
+    return mUidsAbleToSelectThisNetwork->toString();
+}
+
 // Check if the user has been added to this network. If yes, the highest priority of matching
 // setting is returned by subPriority. Thus caller can make choice among several matching
 // networks.
@@ -115,6 +122,18 @@ void Network::removeFromUidRangeMap(const UidRanges& uidRanges, int32_t subPrior
     } else {
         ALOGW("uidRanges with priority %d not found", subPriority);
     }
+}
+
+void Network::clearAllowedUids() {
+    mUidsAbleToSelectThisNetwork.reset();
+}
+
+void Network::setAllowedUids(const UidRanges& uidRanges) {
+    mUidsAbleToSelectThisNetwork = uidRanges;
+}
+
+bool Network::isUidAllowed(uid_t uid) {
+    return !mUidsAbleToSelectThisNetwork || mUidsAbleToSelectThisNetwork->hasUid(uid);
 }
 
 bool Network::canAddUidRanges(const UidRanges& uidRanges) const {
