@@ -53,6 +53,7 @@
 #include <android-base/test_utils.h>
 #include <android/multinetwork.h>
 #include <binder/IPCThreadState.h>
+#include <bpf/BpfUtils.h>
 #include <com/android/internal/net/BnOemNetdUnsolicitedEventListener.h>
 #include <com/android/internal/net/IOemNetd.h>
 #include <cutils/multiuser.h>
@@ -108,6 +109,7 @@ using android::base::StringPrintf;
 using android::base::Trim;
 using android::base::unique_fd;
 using android::binder::Status;
+using android::bpf::isAtLeastKernelVersion;
 using android::net::INetd;
 using android::net::InterfaceConfigurationParcel;
 using android::net::InterfaceController;
@@ -510,6 +512,150 @@ TEST_F(NetdBinderTest, XfrmControllerInit) {
     ASSERT_TRUE(XfrmController::ipSecRemoveTunnelInterface("ipsec_test").ok());
 }
 
+// Two kernel fixes have been added in 5.17 to allow XFRM_MIGRATE to work correctly
+// when (1) there are multiple tunnels with the same selectors; and (2) addresses
+// are updated to a different IP family. These two fixes were pulled into upstream
+// LTS releases 4.14.273, 4.19.236, 5.4.186, 5.10.107 and 5.15.30, from whence they
+// flowed into the Android Common Kernel (via standard LTS merges).
+// As such we require 4.14.273+, 4.19.236+, 5.4.186+, 5.10.107+, 5.15.30+ and 5.17+
+// to have these fixes.
+bool hasXfrmMigrateKernelFixes() {
+    return (isAtLeastKernelVersion(4, 14, 273) && !isAtLeastKernelVersion(4, 19, 0)) ||
+           (isAtLeastKernelVersion(4, 19, 236) && !isAtLeastKernelVersion(5, 4, 0)) ||
+           (isAtLeastKernelVersion(5, 4, 186) && !isAtLeastKernelVersion(5, 10, 0)) ||
+           (isAtLeastKernelVersion(5, 10, 107) && !isAtLeastKernelVersion(5, 15, 0)) ||
+           isAtLeastKernelVersion(5, 15, 30);
+}
+
+// Does the kernel support CONFIG_XFRM_MIGRATE and include the kernel fixes?
+bool supportsXfrmMigrate() {
+    if (!hasXfrmMigrateKernelFixes()) return false;
+
+    // 5.10+ VINTF requires CONFIG_XFRM_MIGRATE enabled
+    if (isAtLeastKernelVersion(5, 10, 0)) return true;
+
+    const std::string wildcardAddr = "::";
+
+    // Expect migration to fail with EINVAL because it is trying to migrate a
+    // non-existent SA.
+    auto status = XfrmController::ipSecMigrate(
+            0 /* resourceId */, AF_INET6, 0 /* direction == out */,
+            wildcardAddr /* sourceAddress */, wildcardAddr /* destinationAddress */,
+            wildcardAddr /* newSourceAddress */, wildcardAddr /* newDestinationAddress */,
+            0 /* xfrmInterfaceId */);
+
+    if (android::netdutils::equalToErrno(status, EINVAL)) {
+        return true;
+    } else if (android::netdutils::equalToErrno(status, ENOPROTOOPT)) {
+        return false;
+    } else {
+        GTEST_LOG_(WARNING) << "Unexpected migration result: "
+                            << android::netdutils::toString(status)
+                            << "Assuming XFRM_MIGRATE is enabled.";
+        return true;
+    }
+}
+
+#define SKIP_IF_XFRM_MIGRATE_NOT_SUPPORTED                                     \
+    do {                                                                       \
+        if (!supportsXfrmMigrate())                                            \
+            GTEST_SKIP() << "This test is skipped since xfrm migrate feature " \
+                         << "not supported\n";                                 \
+    } while (0)
+
+TEST_F(NetdBinderTest, XfrmMigrate) {
+    SKIP_IF_XFRM_MIGRATE_NOT_SUPPORTED;
+
+    static const struct TestData {
+        const int32_t addrFamily;
+        const int32_t newAddrFamily;
+        const std::string srcAddr;
+        const std::string dstAddr;
+        const std::string newSrcAddr;
+        const std::string newDstAddr;
+    } kTestData[] = {
+            {AF_INET, AF_INET, "192.0.2.1", "192.0.2.2", "192.0.2.101", "192.0.2.102"},
+            {AF_INET, AF_INET6, "192.0.2.1", "192.0.2.2", "2001:db8::101", "2001:db8::102"},
+            {AF_INET6, AF_INET6, "2001:db8::1", "2001:db8::2", "2001:db8::101", "2001:db8::102"},
+            {AF_INET6, AF_INET, "2001:db8::1", "2001:db8::2", "192.0.2.101", "192.0.2.102"},
+    };
+
+    const int32_t xfrmInterfaceId = 0xFFFE;
+    const std::string tunnelDeviceName = "ipsec_test";
+
+    auto status = mNetd->ipSecAddTunnelInterface(tunnelDeviceName, "2001:db8::fe", "2001:db8::ff",
+                                                 0x1234 + 50 /* iKey */, 0x1234 + 50 /* oKey */,
+                                                 xfrmInterfaceId);
+
+    SCOPED_TRACE(status);
+    ASSERT_TRUE(status.isOk());
+
+    for (auto& td : kTestData) {
+        const int32_t direction = static_cast<int>(android::net::XfrmDirection::OUT);
+        const int32_t resourceId = 0;
+        const int32_t spiReq = 123;
+        int32_t spi = 0;
+
+        status = mNetd->ipSecAllocateSpi(resourceId, td.srcAddr, td.dstAddr, spiReq, &spi);
+        SCOPED_TRACE(status);
+        ASSERT_TRUE(status.isOk());
+
+        status = mNetd->ipSecAddSecurityAssociation(
+                resourceId, static_cast<int32_t>(android::net::XfrmMode::TUNNEL), td.srcAddr,
+                td.dstAddr, 100 /* underlyingNetid */, spiReq, 0 /* markValue */, 0 /* markMask */,
+                "digest_null" /* authAlgo */, {} /* authKey */, 0 /* authTruncBits */,
+                "ecb(cipher_null)" /* cryptAlgo */, {} /* cryptKey */, 0 /* cryptTruncBits */,
+                "" /* aeadAlgo */, {} /* aeadKey */, 0 /* aeadIcvBits */,
+                0 /* encapType == ENCAP_NONE */, 0 /* encapLocalPort */, 0 /* encapRemotePort */,
+                xfrmInterfaceId);
+        SCOPED_TRACE(status);
+        ASSERT_TRUE(status.isOk());
+
+        for (int addrFamily : ADDRESS_FAMILIES) {
+            // Add a policy
+            status = mNetd->ipSecAddSecurityPolicy(resourceId, addrFamily, direction, td.srcAddr,
+                                                   td.dstAddr, spiReq, 0 /* markValue */,
+                                                   0 /* markMask */, xfrmInterfaceId);
+            SCOPED_TRACE(status);
+            ASSERT_TRUE(status.isOk());
+
+            // Migrate tunnel mode SA
+            android::net::IpSecMigrateInfoParcel parcel;
+            parcel.requestId = resourceId;
+            parcel.selAddrFamily = addrFamily;
+            parcel.direction = direction;
+            parcel.oldSourceAddress = td.srcAddr;
+            parcel.oldDestinationAddress = td.dstAddr;
+            parcel.newSourceAddress = td.newSrcAddr;
+            parcel.newDestinationAddress = td.newDstAddr;
+            parcel.interfaceId = xfrmInterfaceId;
+
+            status = mNetd->ipSecMigrate(parcel);
+            SCOPED_TRACE(status);
+            ASSERT_TRUE(status.isOk());
+        }
+
+        // Clean up
+        status = mNetd->ipSecDeleteSecurityAssociation(resourceId, td.newSrcAddr, td.newDstAddr,
+                                                       spiReq, 0 /* markValue */, 0 /* markMask */,
+                                                       xfrmInterfaceId);
+        SCOPED_TRACE(status);
+        ASSERT_TRUE(status.isOk());
+
+        for (int addrFamily : ADDRESS_FAMILIES) {
+            status = mNetd->ipSecDeleteSecurityPolicy(resourceId, addrFamily, direction,
+                                                      0 /* markValue */, 0 /* markMask */,
+                                                      xfrmInterfaceId);
+            SCOPED_TRACE(status);
+            ASSERT_TRUE(status.isOk());
+        }
+    }
+
+    // Remove Tunnel Interface.
+    status = mNetd->ipSecRemoveTunnelInterface(tunnelDeviceName);
+    SCOPED_TRACE(status);
+    EXPECT_TRUE(status.isOk());
+}
 #endif  // INTPTR_MAX != INT32_MAX
 
 static int bandwidthDataSaverEnabled(const char *binary) {
