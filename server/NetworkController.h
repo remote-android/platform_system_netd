@@ -148,6 +148,7 @@ public:
 
     void dump(netdutils::DumpWriter& dw);
     int setNetworkAllowlist(const std::vector<netd::aidl::NativeUidRangeConfig>& settings);
+    bool isUidAllowed(unsigned netId, uid_t uid) const;
 
   private:
     bool isValidNetworkLocked(unsigned netId) const;

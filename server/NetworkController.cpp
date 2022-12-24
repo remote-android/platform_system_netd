@@ -825,6 +825,15 @@ int NetworkController::setNetworkAllowlist(
     return 0;
 }
 
+bool NetworkController::isUidAllowed(unsigned netId, uid_t uid) const {
+    const ScopedRLock lock(mRWLock);
+    Network* network = getNetworkLocked(netId);
+    if (network && network->isUidAllowed(uid)) {
+        return true;
+    }
+    return false;
+}
+
 bool NetworkController::isValidNetworkLocked(unsigned netId) const {
     return getNetworkLocked(netId);
 }

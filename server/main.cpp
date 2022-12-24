@@ -96,7 +96,15 @@ int tagSocketCallback(int sockFd, uint32_t tag, uid_t uid, pid_t) {
     return libnetd_updatable_tagSocket(sockFd, tag, uid, AID_DNS);
 }
 
-bool evaluateDomainNameCallback(const android_net_context&, const char* /*name*/) {
+bool evaluateDomainNameCallback(const android_net_context& netcontext, const char* /*name*/) {
+    // OEMs should NOT modify IF statement, or DNS control provided by mainline modules may break.
+    if (!gCtls->netCtrl.isUidAllowed(netcontext.app_netid, netcontext.uid)) {
+        ALOGI("uid %d is not allowed to use netid %u", netcontext.uid, netcontext.app_netid);
+        return false;
+    }
+
+    // Add OEM customization from here
+    // ...
     return true;
 }
 
