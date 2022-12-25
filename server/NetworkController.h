@@ -19,7 +19,6 @@
 #include <android-base/thread_annotations.h>
 #include <android/multinetwork.h>
 
-
 #include "NetdConstants.h"
 #include "Permission.h"
 #include "PhysicalNetwork.h"
@@ -148,6 +147,7 @@ public:
     void denyProtect(const std::vector<uid_t>& uids);
 
     void dump(netdutils::DumpWriter& dw);
+    int setNetworkAllowlist(const std::vector<netd::aidl::NativeUidRangeConfig>& settings);
 
   private:
     bool isValidNetworkLocked(unsigned netId) const;
@@ -173,6 +173,7 @@ public:
                                   int mtu);
     [[nodiscard]] int modifyFallthroughLocked(unsigned vpnNetId, bool add);
     void updateTcpSocketMonitorPolling();
+    void clearAllowedUidsForAllNetworksLocked();
 
     class DelegateImpl;
     DelegateImpl* const mDelegateImpl;

@@ -749,7 +749,12 @@ void NetworkController::dump(DumpWriter& dw) {
         }
         if (const auto& str = network->uidRangesToString(); !str.empty()) {
             dw.incIndent();
-            dw.println(str);
+            dw.println("Per-app UID ranges: %s", str.c_str());
+            dw.decIndent();
+        }
+        if (const auto& str = network->allowedUidsToString(); !str.empty()) {
+            dw.incIndent();
+            dw.println("Allowed UID ranges: %s", str.c_str());
             dw.decIndent();
         }
         dw.blankline();
@@ -792,6 +797,32 @@ void NetworkController::dump(DumpWriter& dw) {
     dw.decIndent();
 
     dw.decIndent();
+}
+
+void NetworkController::clearAllowedUidsForAllNetworksLocked() {
+    for (const auto& [_, network] : mNetworks) {
+        if (!network->isPhysical()) continue;
+
+        network->clearAllowedUids();
+    }
+}
+
+int NetworkController::setNetworkAllowlist(
+        const std::vector<netd::aidl::NativeUidRangeConfig>& settings) {
+    const ScopedWLock lock(mRWLock);
+
+    clearAllowedUidsForAllNetworksLocked();
+    for (const auto& setting : settings) {
+        Network* network = getNetworkLocked(setting.netId);
+        if (!network) return -ENONET;
+        if (!network->isPhysical()) return -EINVAL;
+    }
+
+    for (const auto& setting : settings) {
+        Network* network = getNetworkLocked(setting.netId);
+        network->setAllowedUids(UidRanges(setting.uidRanges));
+    }
+    return 0;
 }
 
 bool NetworkController::isValidNetworkLocked(unsigned netId) const {
@@ -885,6 +916,10 @@ int NetworkController::checkUserNetworkAccessLocked(uid_t uid, unsigned netId) c
     // Only apps that are configured as "no default network" can use the unreachable network.
     if (network->isUnreachable()) {
         return network->appliesToUser(uid, &subPriority) ? 0 : -EPERM;
+    }
+
+    if (!network->isUidAllowed(uid)) {
+        return -EACCES;
     }
     // Check whether the UID's permission bits are sufficient to use the network.
     // Because the permission of the system default network is PERMISSION_NONE(0x0), apps can always
