@@ -1247,5 +1247,11 @@ binder::Status NetdNativeService::tetherOffloadGetAndClearStats(
     return binder::Status::fromExceptionCode(binder::Status::EX_UNSUPPORTED_OPERATION);
 }
 
+binder::Status NetdNativeService::setNetworkAllowlist(
+        const std::vector<NativeUidRangeConfig>& settings) {
+    ENFORCE_NETWORK_STACK_PERMISSIONS();
+    return statusFromErrcode(gCtls->netCtrl.setNetworkAllowlist(settings));
+}
+
 }  // namespace net
 }  // namespace android

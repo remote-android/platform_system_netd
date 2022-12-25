@@ -266,6 +266,8 @@ class NetdNativeService : public BinderService<NetdNativeService>, public BnNetd
 
     binder::Status getOemNetd(android::sp<android::IBinder>* listener) override;
     binder::Status getFwmarkForNetwork(int32_t netId, MarkMaskParcel* markmask);
+    binder::Status setNetworkAllowlist(
+            const std::vector<netd::aidl::NativeUidRangeConfig>& settings) override;
 
   private:
     std::vector<uid_t> intsToUids(const std::vector<int32_t>& intUids);

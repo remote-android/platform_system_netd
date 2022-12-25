@@ -4035,6 +4035,10 @@ namespace {
 #define APP_DEFAULT_NETID TEST_NETID2
 #define VPN_NETID TEST_NETID3
 
+#define ENTERPRISE_NETID_1 TEST_NETID2
+#define ENTERPRISE_NETID_2 TEST_NETID3
+#define ENTERPRISE_NETID_3 TEST_NETID4
+
 void verifyAppUidRules(std::vector<bool>&& expectedResults, std::vector<UidRangeParcel>& uidRanges,
                        const std::string& iface, int32_t subPriority) {
     ASSERT_EQ(expectedResults.size(), uidRanges.size());
@@ -5388,4 +5392,128 @@ TEST_F(MDnsBinderTest, EventListenerTest) {
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
     status = mMDns->unregisterEventListener(testListener);
     EXPECT_TRUE(status.isOk()) << status.exceptionMessage();
+}
+
+// Creates a system default network and 3 enterprise networks for two profiles. Check if network
+// selection in compliance with network allow list settings.
+//
+// +-----------+-----------------------+----------------------------------------+
+// |    UID    | UID's default network | UID can select networks                |
+// +-----------+-----------------------+----------------------------------------+
+// | TEST_UID1 | ENTERPRISE_NETID_1    | ENTERPRISE_NETID_1, ENTERPRISE_NETID_2 |
+// | TEST_UID2 | ENTERPRISE_NETID_3    | ENTERPRISE_NETID_3                     |
+// +-----------+-----------------------+----------------------------------------+
+TEST_F(NetdBinderTest, PerProfileNetworkPermission) {
+    // creates 4 networks
+    createDefaultAndOtherPhysicalNetwork(SYSTEM_DEFAULT_NETID, ENTERPRISE_NETID_1);
+    createPhysicalNetwork(ENTERPRISE_NETID_2, sTun3.name());
+    EXPECT_TRUE(mNetd->networkAddRoute(ENTERPRISE_NETID_2, sTun3.name(), "::/0", "").isOk());
+    createPhysicalNetwork(ENTERPRISE_NETID_3, sTun4.name());
+    EXPECT_TRUE(mNetd->networkAddRoute(ENTERPRISE_NETID_3, sTun4.name(), "::/0", "").isOk());
+
+    // profile#1
+    NativeUidRangeConfig cfg1 =
+            makeNativeUidRangeConfig(ENTERPRISE_NETID_1, {makeUidRangeParcel(TEST_UID1, TEST_UID1)},
+                                     UidRanges::SUB_PRIORITY_HIGHEST + 20);
+    EXPECT_TRUE(mNetd->networkAddUidRangesParcel(cfg1).isOk());
+
+    // profile#2
+    NativeUidRangeConfig cfg2 =
+            makeNativeUidRangeConfig(ENTERPRISE_NETID_3, {makeUidRangeParcel(TEST_UID2, TEST_UID2)},
+                                     UidRanges::SUB_PRIORITY_HIGHEST + 20);
+    EXPECT_TRUE(mNetd->networkAddUidRangesParcel(cfg2).isOk());
+
+    // setNetworkAllowlist at once
+    // all uids except for TEST_UID2
+    NativeUidRangeConfig nw1UserConfig = makeNativeUidRangeConfig(
+            ENTERPRISE_NETID_1,
+            {makeUidRangeParcel(0, TEST_UID3), makeUidRangeParcel(TEST_UID1, TEST_UID1)},
+            /*unused*/ 0);
+    NativeUidRangeConfig nw2UserConfig = makeNativeUidRangeConfig(
+            ENTERPRISE_NETID_2,
+            {makeUidRangeParcel(0, TEST_UID3), makeUidRangeParcel(TEST_UID1, TEST_UID1)},
+            /*unused*/ 0);
+    // all uids except for TEST_UID1
+    NativeUidRangeConfig nw3UserConfig = makeNativeUidRangeConfig(
+            ENTERPRISE_NETID_3, {makeUidRangeParcel(0, TEST_UID2)}, /*unused*/ 0);
+    // all uids except for TEST_UID1 and TEST_UID2
+    NativeUidRangeConfig nwDefaultUserConfig = makeNativeUidRangeConfig(
+            SYSTEM_DEFAULT_NETID, {makeUidRangeParcel(0, TEST_UID3)}, /*unused*/ 0);
+    EXPECT_TRUE(mNetd->setNetworkAllowlist(
+                             {nw1UserConfig, nw2UserConfig, nw3UserConfig, nwDefaultUserConfig})
+                        .isOk());
+
+    {  // Can set network for process on allowed networks.
+        ScopedUidChange scopedUidChange(TEST_UID1);
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_1));
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_2));
+        // Can not set network for process on not allowed networks.
+        EXPECT_EQ(-EACCES, setNetworkForProcess(SYSTEM_DEFAULT_NETID));
+        EXPECT_EQ(-EACCES, setNetworkForProcess(ENTERPRISE_NETID_3));
+    }
+    {  // Can set network for process on allowed networks.
+        ScopedUidChange scopedUidChange(TEST_UID2);
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_3));
+        // Can not set network for process on not allowed networks.
+        EXPECT_EQ(-EACCES, setNetworkForProcess(SYSTEM_DEFAULT_NETID));
+        EXPECT_EQ(-EACCES, setNetworkForProcess(ENTERPRISE_NETID_1));
+        EXPECT_EQ(-EACCES, setNetworkForProcess(ENTERPRISE_NETID_2));
+    }
+    {  // Root can use whatever network it wants.
+        ScopedUidChange scopedUidChange(AID_ROOT);
+        EXPECT_EQ(0, setNetworkForProcess(SYSTEM_DEFAULT_NETID));
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_1));
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_2));
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_3));
+    }
+
+    // Update setting: remove ENTERPRISE_NETID_2 from profile#1's allowed network list and add it to
+    // profile#2's allowed network list.
+    // +-----------+-----------------------+----------------------------------------+
+    // |    UID    | UID's default network | UID can select networks                |
+    // +-----------+-----------------------+----------------------------------------+
+    // | TEST_UID1 | ENTERPRISE_NETID_1    | ENTERPRISE_NETID_1                     |
+    // | TEST_UID2 | ENTERPRISE_NETID_3    | ENTERPRISE_NETID_2, ENTERPRISE_NETID_3 |
+    // +-----------+-----------------------+----------------------------------------+
+
+    // all uids except for TEST_UID2
+    nw1UserConfig = makeNativeUidRangeConfig(
+            ENTERPRISE_NETID_1,
+            {makeUidRangeParcel(0, TEST_UID3), makeUidRangeParcel(TEST_UID1, TEST_UID1)},
+            /*unused*/ 0);
+    // all uids except for TEST_UID1
+    nw2UserConfig = makeNativeUidRangeConfig(ENTERPRISE_NETID_2, {makeUidRangeParcel(0, TEST_UID2)},
+                                             /*unused*/ 0);
+    nw3UserConfig = makeNativeUidRangeConfig(ENTERPRISE_NETID_3, {makeUidRangeParcel(0, TEST_UID2)},
+                                             /*unused*/ 0);
+    // all uids except for TEST_UID1 and TEST_UID2
+    nwDefaultUserConfig = makeNativeUidRangeConfig(
+            SYSTEM_DEFAULT_NETID, {makeUidRangeParcel(0, TEST_UID3)}, /*unused*/ 0);
+    EXPECT_TRUE(mNetd->setNetworkAllowlist(
+                             {nw1UserConfig, nw2UserConfig, nw3UserConfig, nwDefaultUserConfig})
+                        .isOk());
+
+    {
+        ScopedUidChange scopedUidChange(TEST_UID1);
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_1));
+        EXPECT_EQ(-EACCES, setNetworkForProcess(SYSTEM_DEFAULT_NETID));
+        EXPECT_EQ(-EACCES, setNetworkForProcess(ENTERPRISE_NETID_2));
+        EXPECT_EQ(-EACCES, setNetworkForProcess(ENTERPRISE_NETID_3));
+    }
+    {
+        ScopedUidChange scopedUidChange(TEST_UID2);
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_2));
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_3));
+        EXPECT_EQ(-EACCES, setNetworkForProcess(SYSTEM_DEFAULT_NETID));
+        EXPECT_EQ(-EACCES, setNetworkForProcess(ENTERPRISE_NETID_1));
+    }
+
+    // UID not restricted by allowed list can select all networks.
+    {
+        ScopedUidChange scopedUidChange(TEST_UID3);
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_1));
+        EXPECT_EQ(0, setNetworkForProcess(SYSTEM_DEFAULT_NETID));
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_2));
+        EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_3));
+    }
 }
