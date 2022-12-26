@@ -801,26 +801,23 @@ void NetworkController::dump(DumpWriter& dw) {
 
 void NetworkController::clearAllowedUidsForAllNetworksLocked() {
     for (const auto& [_, network] : mNetworks) {
-        if (!network->isPhysical()) continue;
-
         network->clearAllowedUids();
     }
 }
 
 int NetworkController::setNetworkAllowlist(
-        const std::vector<netd::aidl::NativeUidRangeConfig>& settings) {
+        const std::vector<netd::aidl::NativeUidRangeConfig>& rangeConfigs) {
     const ScopedWLock lock(mRWLock);
 
-    clearAllowedUidsForAllNetworksLocked();
-    for (const auto& setting : settings) {
-        Network* network = getNetworkLocked(setting.netId);
+    for (const auto& config : rangeConfigs) {
+        Network* network = getNetworkLocked(config.netId);
         if (!network) return -ENONET;
-        if (!network->isPhysical()) return -EINVAL;
     }
 
-    for (const auto& setting : settings) {
-        Network* network = getNetworkLocked(setting.netId);
-        network->setAllowedUids(UidRanges(setting.uidRanges));
+    clearAllowedUidsForAllNetworksLocked();
+    for (const auto& config : rangeConfigs) {
+        Network* network = getNetworkLocked(config.netId);
+        network->setAllowedUids(UidRanges(config.uidRanges));
     }
     return 0;
 }
