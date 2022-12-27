@@ -121,11 +121,13 @@ public:
 
     [[nodiscard]] static int addInterfaceToPhysicalNetwork(unsigned netId, const char* interface,
                                                            Permission permission,
-                                                           const UidRangeMap& uidRangeMap);
+                                                           const UidRangeMap& uidRangeMap,
+                                                           bool local);
     [[nodiscard]] static int removeInterfaceFromPhysicalNetwork(unsigned netId,
                                                                 const char* interface,
                                                                 Permission permission,
-                                                                const UidRangeMap& uidRangeMap);
+                                                                const UidRangeMap& uidRangeMap,
+                                                                bool local);
 
     [[nodiscard]] static int addInterfaceToVirtualNetwork(unsigned netId, const char* interface,
                                                           bool secure,
@@ -138,7 +140,7 @@ public:
 
     [[nodiscard]] static int modifyPhysicalNetworkPermission(unsigned netId, const char* interface,
                                                              Permission oldPermission,
-                                                             Permission newPermission);
+                                                             Permission newPermission, bool local);
 
     [[nodiscard]] static int addUsersToVirtualNetwork(unsigned netId, const char* interface,
                                                       bool secure, const UidRangeMap& uidRangeMap,
@@ -179,10 +181,11 @@ public:
                                                              Permission permission);
 
     [[nodiscard]] static int addUsersToPhysicalNetwork(unsigned netId, const char* interface,
-                                                       const UidRangeMap& uidRangeMap);
+                                                       const UidRangeMap& uidRangeMap, bool local);
 
     [[nodiscard]] static int removeUsersFromPhysicalNetwork(unsigned netId, const char* interface,
-                                                            const UidRangeMap& uidRangeMap);
+                                                            const UidRangeMap& uidRangeMap,
+                                                            bool local);
 
     [[nodiscard]] static int addUsersToUnreachableNetwork(unsigned netId,
                                                           const UidRangeMap& uidRangeMap);
@@ -221,7 +224,7 @@ public:
     static int modifyDefaultNetwork(uint16_t action, const char* interface, Permission permission);
     static int modifyPhysicalNetwork(unsigned netId, const char* interface,
                                      const UidRangeMap& uidRangeMap, Permission permission,
-                                     bool add, bool modifyNonUidBasedRules);
+                                     bool add, bool modifyNonUidBasedRules, bool local);
     static int modifyUnreachableNetwork(unsigned netId, const UidRangeMap& uidRangeMap, bool add);
     static int modifyRoute(uint16_t action, uint16_t flags, const char* interface,
                            const char* destination, const char* nexthop, TableType tableType,
