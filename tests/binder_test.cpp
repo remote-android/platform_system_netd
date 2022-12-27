@@ -16,6 +16,7 @@
  * binder_test.cpp - unit tests for netd binder RPCs.
  */
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cinttypes>
@@ -739,12 +740,7 @@ TEST_F(NetdBinderTest, BandwidthEnableDataSaver) {
 
 static bool ipRuleExists(const char* ipVersion, const std::string& ipRule) {
     std::vector<std::string> rules = listIpRules(ipVersion);
-    for (const auto& rule : rules) {
-        if (rule.find(ipRule) != std::string::npos) {
-            return true;
-        }
-    }
-    return false;
+    return std::find(rules.begin(), rules.end(), ipRule) != rules.end();
 }
 
 static bool ipRuleExistsForRange(const uint32_t priority, const UidRangeParcel& range,
@@ -758,11 +754,10 @@ static bool ipRuleExistsForRange(const uint32_t priority, const UidRangeParcel& 
     std::string prefix = StringPrintf("%" PRIu32 ":", priority);
     std::string suffix;
     if (oif) {
-        suffix = StringPrintf(" iif lo oif %s uidrange %d-%d %s\n", oif, range.start, range.stop,
+        suffix = StringPrintf(" iif lo oif %s uidrange %d-%d %s", oif, range.start, range.stop,
                               action.c_str());
     } else {
-        suffix = StringPrintf(" iif lo uidrange %d-%d %s\n", range.start, range.stop,
-                              action.c_str());
+        suffix = StringPrintf(" iif lo uidrange %d-%d %s", range.start, range.stop, action.c_str());
     }
     for (const auto& line : rules) {
         if (android::base::StartsWith(line, prefix) && android::base::EndsWith(line, suffix)) {
@@ -865,7 +860,7 @@ TEST_F(NetdBinderTest, NetworkUidRules) {
     std::vector<UidRangeParcel> uidRanges = {makeUidRangeParcel(BASE_UID + 8005, BASE_UID + 8012),
                                              makeUidRangeParcel(BASE_UID + 8090, BASE_UID + 8099)};
     UidRangeParcel otherRange = makeUidRangeParcel(BASE_UID + 8190, BASE_UID + 8299);
-    std::string action = StringPrintf("lookup %s ", sTun.name().c_str());
+    std::string action = StringPrintf("lookup %s", sTun.name().c_str());
 
     EXPECT_TRUE(mNetd->networkAddUidRanges(TEST_NETID1, uidRanges).isOk());
 
@@ -1687,7 +1682,14 @@ void expectNetworkDefaultIpRuleDoesNotExist() {
     std::string networkDefaultRule =
             StringPrintf("%u:\tfrom all fwmark 0x0/0xffff iif lo", RULE_PRIORITY_DEFAULT_NETWORK);
 
-    expectRuleForV4AndV6(NONE_EXIST, networkDefaultRule);
+    for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
+        std::vector<std::string> rules = listIpRules(ipVersion);
+        for (const auto& line : rules) {
+            if (android::base::StartsWith(line, networkDefaultRule)) {
+                FAIL();
+            }
+        }
+    }
 }
 
 void expectNetworkPermissionIpRuleExists(const char* ifName, int permission) {
@@ -1980,7 +1982,7 @@ bool ipRuleIpfwdExists(const char* ipVersion, const std::string& ipfwdRule) {
 
 void expectIpfwdRuleExists(const char* fromIf, const char* toIf) {
     std::string ipfwdRule =
-            StringPrintf("%u:\tfrom all iif %s lookup %s ", RULE_PRIORITY_TETHERING, fromIf, toIf);
+            StringPrintf("%u:\tfrom all iif %s lookup %s", RULE_PRIORITY_TETHERING, fromIf, toIf);
 
     for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
         EXPECT_TRUE(ipRuleIpfwdExists(ipVersion, ipfwdRule));
@@ -1989,7 +1991,7 @@ void expectIpfwdRuleExists(const char* fromIf, const char* toIf) {
 
 void expectIpfwdRuleNotExists(const char* fromIf, const char* toIf) {
     std::string ipfwdRule =
-            StringPrintf("%u:\tfrom all iif %s lookup %s ", RULE_PRIORITY_TETHERING, fromIf, toIf);
+            StringPrintf("%u:\tfrom all iif %s lookup %s", RULE_PRIORITY_TETHERING, fromIf, toIf);
 
     for (const auto& ipVersion : {IP_RULE_V4, IP_RULE_V6}) {
         EXPECT_FALSE(ipRuleIpfwdExists(ipVersion, ipfwdRule));
@@ -4080,8 +4082,8 @@ void verifyAppUidRules(std::vector<bool>&& expectedResults, std::vector<UidRange
                        const std::string& iface, int32_t subPriority) {
     ASSERT_EQ(expectedResults.size(), uidRanges.size());
     if (iface.size()) {
-        std::string action = StringPrintf("lookup %s ", iface.c_str());
-        std::string action_local = StringPrintf("lookup %s_local ", iface.c_str());
+        std::string action = StringPrintf("lookup %s", iface.c_str());
+        std::string action_local = StringPrintf("lookup %s_local", iface.c_str());
         for (unsigned long i = 0; i < uidRanges.size(); i++) {
             EXPECT_EQ(expectedResults[i],
                       ipRuleExistsForRange(RULE_PRIORITY_UID_EXPLICIT_NETWORK + subPriority,
@@ -4120,7 +4122,7 @@ void verifyAppUidRules(std::vector<bool>&& expectedResults, NativeUidRangeConfig
 void verifyVpnUidRules(std::vector<bool>&& expectedResults, NativeUidRangeConfig& uidRangeConfig,
                        const std::string& iface, bool secure, bool excludeLocalRoutes) {
     ASSERT_EQ(expectedResults.size(), uidRangeConfig.uidRanges.size());
-    std::string action = StringPrintf("lookup %s ", iface.c_str());
+    std::string action = StringPrintf("lookup %s", iface.c_str());
 
     int32_t priority;
     if (secure) {
