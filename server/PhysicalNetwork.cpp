@@ -61,12 +61,7 @@ PhysicalNetwork::PhysicalNetwork(unsigned netId, PhysicalNetwork::Delegate* dele
       mDelegate(delegate),
       mPermission(PERMISSION_NONE),
       mIsDefault(false),
-      mIsLocalNetwork(local) {
-    // TODO : remove this log, it's only present to avoid -Wunused-private-field from blocking
-    // compilation
-    ALOGI("Created physical network instance netId=%d local=%s", netId,
-          mIsLocalNetwork ? "true" : "false");
-}
+      mIsLocalNetwork(local) {}
 
 PhysicalNetwork::~PhysicalNetwork() {}
 
@@ -120,8 +115,8 @@ int PhysicalNetwork::setPermission(Permission permission) {
 
     destroySocketsLackingPermission(permission);
     for (const std::string& interface : mInterfaces) {
-        if (int ret = RouteController::modifyPhysicalNetworkPermission(mNetId, interface.c_str(),
-                                                                       mPermission, permission)) {
+        if (int ret = RouteController::modifyPhysicalNetworkPermission(
+                    mNetId, interface.c_str(), mPermission, permission, mIsLocalNetwork)) {
             ALOGE("failed to change permission on interface %s of netId %u from %x to %x",
                   interface.c_str(), mNetId, mPermission, permission);
             return ret;
@@ -178,8 +173,8 @@ int PhysicalNetwork::addUsers(const UidRanges& uidRanges, int32_t subPriority) {
     }
 
     for (const std::string& interface : mInterfaces) {
-        int ret = RouteController::addUsersToPhysicalNetwork(mNetId, interface.c_str(),
-                                                             {{subPriority, uidRanges}});
+        int ret = RouteController::addUsersToPhysicalNetwork(
+                mNetId, interface.c_str(), {{subPriority, uidRanges}}, mIsLocalNetwork);
         if (ret) {
             ALOGE("failed to add users on interface %s of netId %u", interface.c_str(), mNetId);
             return ret;
@@ -193,8 +188,8 @@ int PhysicalNetwork::removeUsers(const UidRanges& uidRanges, int32_t subPriority
     if (!isValidSubPriority(subPriority)) return -EINVAL;
 
     for (const std::string& interface : mInterfaces) {
-        int ret = RouteController::removeUsersFromPhysicalNetwork(mNetId, interface.c_str(),
-                                                                  {{subPriority, uidRanges}});
+        int ret = RouteController::removeUsersFromPhysicalNetwork(
+                mNetId, interface.c_str(), {{subPriority, uidRanges}}, mIsLocalNetwork);
         if (ret) {
             ALOGE("failed to remove users on interface %s of netId %u", interface.c_str(), mNetId);
             return ret;
@@ -208,8 +203,8 @@ int PhysicalNetwork::addInterface(const std::string& interface) {
     if (hasInterface(interface)) {
         return 0;
     }
-    if (int ret = RouteController::addInterfaceToPhysicalNetwork(mNetId, interface.c_str(),
-                                                                 mPermission, mUidRangeMap)) {
+    if (int ret = RouteController::addInterfaceToPhysicalNetwork(
+                mNetId, interface.c_str(), mPermission, mUidRangeMap, mIsLocalNetwork)) {
         ALOGE("failed to add interface %s to netId %u", interface.c_str(), mNetId);
         return ret;
     }
@@ -235,8 +230,8 @@ int PhysicalNetwork::removeInterface(const std::string& interface) {
     // done last as further requests to the RouteController regarding this interface will fail
     // to find the interface index in the cache in cases where the interface is already gone
     // (e.g. bt-pan).
-    if (int ret = RouteController::removeInterfaceFromPhysicalNetwork(mNetId, interface.c_str(),
-                                                                      mPermission, mUidRangeMap)) {
+    if (int ret = RouteController::removeInterfaceFromPhysicalNetwork(
+                mNetId, interface.c_str(), mPermission, mUidRangeMap, mIsLocalNetwork)) {
         ALOGE("failed to remove interface %s from netId %u", interface.c_str(), mNetId);
         return ret;
     }
