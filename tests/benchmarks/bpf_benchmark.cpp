@@ -74,8 +74,11 @@ BENCHMARK_DEFINE_F(BpfBenchMark, WaitForRcu)(benchmark::State& state) {
     }
 }
 
+namespace {
 BENCHMARK_REGISTER_F(BpfBenchMark, MapUpdateEntry)->Arg(1);
 BENCHMARK_REGISTER_F(BpfBenchMark, MapWriteNewEntry)->Arg(1);
 BENCHMARK_REGISTER_F(BpfBenchMark, MapDeleteAddEntry)->Arg(1);
 BENCHMARK_REGISTER_F(BpfBenchMark, WaitForRcu)->Arg(1);
+}  // namespace
+
 BENCHMARK_MAIN();
