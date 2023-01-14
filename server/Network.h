@@ -80,7 +80,7 @@ public:
     const bool mSecure;
     // UIDs that can explicitly select this network. It means no restriction for all UIDs if the
     // optional variable has no value.
-    std::optional<UidRanges> mUidsAbleToSelectThisNetwork;
+    std::optional<UidRanges> mAllowedUids;
 
   private:
     enum Action {
