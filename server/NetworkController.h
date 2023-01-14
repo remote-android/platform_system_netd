@@ -147,7 +147,8 @@ public:
     void denyProtect(const std::vector<uid_t>& uids);
 
     void dump(netdutils::DumpWriter& dw);
-    int setNetworkAllowlist(const std::vector<netd::aidl::NativeUidRangeConfig>& settings);
+    int setNetworkAllowlist(const std::vector<netd::aidl::NativeUidRangeConfig>& rangeConfigs);
+    bool isUidAllowed(unsigned netId, uid_t uid) const;
 
   private:
     bool isValidNetworkLocked(unsigned netId) const;

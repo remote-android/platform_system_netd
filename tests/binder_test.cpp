@@ -5451,6 +5451,9 @@ TEST_F(NetdBinderTest, PerProfileNetworkPermission) {
     EXPECT_TRUE(mNetd->networkAddRoute(ENTERPRISE_NETID_3, sTun4.name(), "::/0", "").isOk());
 
     // profile#1
+    // UidRanges::SUB_PRIORITY_HIGHEST + 20 = PREFERENCE_ORDER_PROFILE, which is defined in
+    // ConnectivityService.java. The value here doesn't really matter because user allowed network
+    // does not depends on specific sub-priority.
     NativeUidRangeConfig cfg1 =
             makeNativeUidRangeConfig(ENTERPRISE_NETID_1, {makeUidRangeParcel(TEST_UID1, TEST_UID1)},
                                      UidRanges::SUB_PRIORITY_HIGHEST + 20);
@@ -5554,5 +5557,22 @@ TEST_F(NetdBinderTest, PerProfileNetworkPermission) {
         EXPECT_EQ(0, setNetworkForProcess(SYSTEM_DEFAULT_NETID));
         EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_2));
         EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_3));
+    }
+
+    // Update setting: remove ENTERPRISE_NETID_1 from profile#1's allowed network list
+    // +-----------+-----------------------+----------------------------------------+
+    // |    UID    | UID's default network | UID can select networks                |
+    // +-----------+-----------------------+----------------------------------------+
+    // | TEST_UID2 | ENTERPRISE_NETID_3    | ENTERPRISE_NETID_2, ENTERPRISE_NETID_3 |
+    // +-----------+-----------------------+----------------------------------------+
+    EXPECT_TRUE(
+            mNetd->setNetworkAllowlist({nw2UserConfig, nw3UserConfig, nwDefaultUserConfig}).isOk());
+
+    // All UIDs should be able to use ENTERPRISE_NETID_1.
+    for (const int uid : {TEST_UID1, TEST_UID2, TEST_UID3}) {
+        {
+            ScopedUidChange scopedUidChange(uid);
+            EXPECT_EQ(0, setNetworkForProcess(ENTERPRISE_NETID_1));
+        }
     }
 }
