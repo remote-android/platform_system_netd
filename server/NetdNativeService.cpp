@@ -1248,9 +1248,9 @@ binder::Status NetdNativeService::tetherOffloadGetAndClearStats(
 }
 
 binder::Status NetdNativeService::setNetworkAllowlist(
-        const std::vector<NativeUidRangeConfig>& settings) {
+        const std::vector<NativeUidRangeConfig>& rangeConfigs) {
     ENFORCE_NETWORK_STACK_PERMISSIONS();
-    return statusFromErrcode(gCtls->netCtrl.setNetworkAllowlist(settings));
+    return statusFromErrcode(gCtls->netCtrl.setNetworkAllowlist(rangeConfigs));
 }
 
 }  // namespace net
