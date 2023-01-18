@@ -825,7 +825,10 @@ int NetworkController::setNetworkAllowlist(
 bool NetworkController::isUidAllowed(unsigned netId, uid_t uid) const {
     const ScopedRLock lock(mRWLock);
     Network* network = getNetworkLocked(netId);
-    if (network && network->isUidAllowed(uid)) {
+    // Exempt when no netId is specified and there is no default network, so that apps or tests can
+    // do DNS lookups for hostnames in etc/hosts.
+    if ((network && network->isUidAllowed(uid)) ||
+        (netId == NETID_UNSET && mDefaultNetId == NETID_UNSET)) {
         return true;
     }
     return false;
