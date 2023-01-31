@@ -827,11 +827,10 @@ bool NetworkController::isUidAllowed(unsigned netId, uid_t uid) const {
     Network* network = getNetworkLocked(netId);
     // Exempt when no netId is specified and there is no default network, so that apps or tests can
     // do DNS lookups for hostnames in etc/hosts.
-    if ((network && network->isUidAllowed(uid)) ||
-        (netId == NETID_UNSET && mDefaultNetId == NETID_UNSET)) {
+    if (netId == NETID_UNSET && mDefaultNetId == NETID_UNSET) {
         return true;
     }
-    return false;
+    return network && network->isUidAllowed(uid);
 }
 
 bool NetworkController::isValidNetworkLocked(unsigned netId) const {
