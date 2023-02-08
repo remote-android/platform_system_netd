@@ -587,9 +587,6 @@ netdutils::Status XfrmController::ipSecAddSecurityAssociation(
     switch (static_cast<XfrmEncapType>(encapType)) {
         case XfrmEncapType::ESPINUDP:
         case XfrmEncapType::ESPINUDP_NON_IKE:
-            if (saInfo.addrFamily != AF_INET) {
-                return netdutils::statusFromErrno(EAFNOSUPPORT, "IPv6 encap not supported");
-            }
             // The ports are not used on input SAs, so this is OK to be wrong when
             // direction is ultimately input.
             saInfo.encap.srcPort = encapLocalPort;
