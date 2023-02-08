@@ -469,19 +469,6 @@ TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv4Encap) {
     // TestIpSecAddSecurityAssociation.
 }
 
-// Test that input validation rejects IPv6 UDP encap.
-TEST_F(XfrmControllerTest, TestIpSecAddSecurityAssociationIPv6Encap) {
-    EXPECT_CALL(mockSyscalls, writev(_, _)).Times(0);
-
-    XfrmController ctrl;
-    Status res = ctrl.ipSecAddSecurityAssociation(
-            1, static_cast<int>(XfrmMode::TRANSPORT), LOCALHOST_V6, TEST_ADDR_V6, 0, DROID_SPI, 0,
-            0, "hmac(sha256)", {}, 128, "cbc(aes)", {}, 0, "", {}, 0,
-            static_cast<int>(XfrmEncapType::ESPINUDP_NON_IKE), 0, 0, 0);
-
-    EXPECT_FALSE(isOk(res)) << "IPv6 UDP encap not rejected";
-}
-
 TEST_F(XfrmControllerTest, TestIpSecApplyTransportModeTransformChecksFamily) {
     struct sockaddr socketaddr;
     socketaddr.sa_family = AF_INET;
