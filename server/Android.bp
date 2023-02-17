@@ -338,3 +338,15 @@ cc_fuzz {
         "aidl-fuzzers/NetdHwAidlServiceFuzzer.cpp",
     ],
 }
+
+cc_fuzz {
+    name: "netd_native_service_fuzzer",
+    defaults: [
+        "service_fuzzer_defaults",
+        "netd_aidl_fuzzer_defaults",
+    ],
+    srcs: [
+        "aidl-fuzzers/NetdNativeServiceFuzzer.cpp",
+    ],
+}
+
