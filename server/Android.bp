@@ -327,3 +327,14 @@ cc_fuzz {
         "aidl-fuzzers/MDnsServiceFuzzer.cpp",
     ],
 }
+
+cc_fuzz {
+    name: "netd_hw_service_fuzzer",
+    defaults: [
+        "service_fuzzer_defaults",
+        "netd_aidl_fuzzer_defaults",
+    ],
+    srcs: [
+        "aidl-fuzzers/NetdHwAidlServiceFuzzer.cpp",
+    ],
+}
