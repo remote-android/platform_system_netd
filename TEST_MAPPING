@@ -13,6 +13,7 @@
           "keywords": ["netd-device-kernel-4.9", "netd-device-kernel-4.14"]}
     ],
     "imports": [
+        { "path": "packages/modules/Connectivity" },
         { "path": "packages/modules/DnsResolver" }
     ],
     "hwasan-presubmit": [
