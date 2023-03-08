@@ -248,3 +248,82 @@ cc_test {
     ],
     // tidy: false,  // cuts test build time by almost 1 minute
 }
+
+cc_defaults {
+    name: "netd_aidl_fuzzer_defaults",
+    defaults: [
+        "netd_aidl_interface_lateststable_cpp_static",
+        "netd_defaults",
+    ],
+    include_dirs: [
+        "external/mdnsresponder/mDNSShared",
+        "system/netd/include",
+    ],
+    shared_libs: [
+        "android.system.net.netd@1.0",
+        "android.system.net.netd@1.1",
+        "android.system.net.netd-V1-ndk",
+        "libdl",
+        "libhidlbase",
+        "libmdnssd",
+        "libnetd_updatable",
+        "libnetd_resolv",
+        "libnetdutils",
+        "libnetutils",
+        "liblog",
+        "libpcap",
+        "libprocessgroup",
+        "libselinux",
+        "libsysutils",
+        "libutils",
+        "mdns_aidl_interface-V1-cpp",
+        "netd_event_listener_interface-V1-cpp",
+        "oemnetd_aidl_interface-cpp",
+    ],
+    static_libs: [
+        "libip_checksum",
+        "libnetd_server",
+        "libtcutils",
+    ],
+    srcs: [
+        "DummyNetwork.cpp",
+        "EventReporter.cpp",
+        "FwmarkServer.cpp",
+        "LocalNetwork.cpp",
+        "MDnsEventReporter.cpp",
+        "MDnsSdListener.cpp",
+        "MDnsService.cpp",
+        "NetdCommand.cpp",
+        "NetdHwAidlService.cpp",
+        "NetdHwService.cpp",
+        "NetdNativeService.cpp",
+        "NetlinkHandler.cpp",
+        "Network.cpp",
+        "NetworkController.cpp",
+        "OemNetdListener.cpp",
+        "PhysicalNetwork.cpp",
+        "PppController.cpp",
+        "Process.cpp",
+        "UnreachableNetwork.cpp",
+        "VirtualNetwork.cpp",
+        "oem_iptables_hook.cpp",
+        "Controllers.cpp",
+    ],
+    fuzz_config: {
+        cc: [
+            "cken@google.com",
+            "maze@google.com",
+        ],
+    }
+}
+
+cc_fuzz {
+    name: "mdns_service_fuzzer",
+    defaults: [
+        "service_fuzzer_defaults",
+        "netd_aidl_fuzzer_defaults",
+    ],
+    srcs: [
+        "aidl-fuzzers/MDnsServiceFuzzer.cpp",
+    ],
+}
