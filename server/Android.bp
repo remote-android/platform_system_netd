@@ -85,8 +85,8 @@ cc_library_static {
     },
 }
 
-cc_binary {
-    name: "netd",
+cc_defaults {
+    name: "netd_default_sources",
     defaults: [
         "netd_aidl_interface_lateststable_cpp_shared",
         "netd_defaults",
@@ -94,11 +94,6 @@ cc_binary {
     include_dirs: [
         "external/mdnsresponder/mDNSShared",
         "system/netd/include",
-    ],
-    init_rc: ["netd.rc"],
-    vintf_fragments: ["android.system.net.netd-service.xml"],
-    required: [
-        "bpfloader",
     ],
     shared_libs: [
         "android.system.net.netd@1.0",
@@ -151,8 +146,22 @@ cc_binary {
         "Process.cpp",
         "UnreachableNetwork.cpp",
         "VirtualNetwork.cpp",
-        "main.cpp",
         "oem_iptables_hook.cpp",
+    ],
+}
+
+cc_binary {
+    name: "netd",
+    defaults: [
+        "netd_default_sources",
+    ],
+    init_rc: ["netd.rc"],
+    vintf_fragments: ["android.system.net.netd-service.xml"],
+    required: [
+        "bpfloader",
+    ],
+    srcs: [
+        "main.cpp",
     ],
     sanitize: {
         cfi: true,
@@ -248,3 +257,57 @@ cc_test {
     ],
     // tidy: false,  // cuts test build time by almost 1 minute
 }
+
+cc_defaults {
+    name: "netd_aidl_fuzzer_defaults",
+    defaults: [
+        "netd_default_sources",
+    ],
+    srcs: [
+        "Controllers.cpp",
+    ],
+    fuzz_config: {
+        cc: [
+            "cken@google.com",
+        ],
+    }
+}
+
+cc_fuzz {
+    name: "mdns_service_fuzzer",
+    defaults: [
+        "service_fuzzer_defaults",
+        "netd_aidl_fuzzer_defaults",
+    ],
+    srcs: [
+        "aidl-fuzzers/MDnsServiceFuzzer.cpp",
+    ],
+    fuzz_config: {
+        cc: [
+            "paulhu@google.com",
+        ],
+    }
+}
+
+cc_fuzz {
+    name: "netd_hw_service_fuzzer",
+    defaults: [
+        "service_fuzzer_defaults",
+        "netd_aidl_fuzzer_defaults",
+    ],
+    srcs: [
+        "aidl-fuzzers/NetdHwAidlServiceFuzzer.cpp",
+    ],
+}
+
+cc_fuzz {
+    name: "netd_native_service_fuzzer",
+    defaults: [
+        "service_fuzzer_defaults",
+        "netd_aidl_fuzzer_defaults",
+    ],
+    srcs: [
+        "aidl-fuzzers/NetdNativeServiceFuzzer.cpp",
+    ],
+}
+
