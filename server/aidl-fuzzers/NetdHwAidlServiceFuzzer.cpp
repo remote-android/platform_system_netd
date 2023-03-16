@@ -19,10 +19,18 @@
 
 #include <android/binder_interface_utils.h>
 
+#include "Controllers.h"
 #include "NetdHwAidlService.h"
 
 using android::fuzzService;
+using android::net::gCtls;
 using android::net::aidl::NetdHwAidlService;
+
+extern "C" int LLVMFuzzerInitialize(int /**argc*/, char /****argv*/) {
+    gCtls = new android::net::Controllers();
+    gCtls->init();
+    return 0;
+}
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     auto service = ::ndk::SharedRefBase::make<NetdHwAidlService>();
