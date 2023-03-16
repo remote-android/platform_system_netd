@@ -17,15 +17,22 @@
 #include <fuzzbinder/libbinder_driver.h>
 #include <fuzzer/FuzzedDataProvider.h>
 
-#include "Permission.h"
+#include "Controllers.h"
 #include "NetdConstants.h"
 #include "NetdNativeService.h"
-
+#include "Permission.h"
 
 using android::fuzzService;
+using android::net::gCtls;
 using android::net::NetdNativeService;
 
 std::mutex android::net::gBigNetdLock;
+
+extern "C" int LLVMFuzzerInitialize(int /**argc*/, char /****argv*/) {
+    gCtls = new android::net::Controllers();
+    gCtls->init();
+    return 0;
+}
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     auto service = new NetdNativeService();
