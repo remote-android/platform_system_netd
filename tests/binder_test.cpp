@@ -1068,13 +1068,13 @@ TEST_F(NetdBinderTest, SocketDestroyLinkLocal) {
     // The client sockets on sTun2 are closed, but the ones on sTun1 remain open.
     char buf[1024];
     EXPECT_EQ(-1, read(c2, buf, sizeof(buf)));
-    EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET);
+    EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET) << "errno:" << errno;
     // The blocking read above ensures that SOCK_DESTROY has completed.
 
     EXPECT_EQ(3, write(a1, "foo", 3));
     EXPECT_EQ(3, read(c1, buf, sizeof(buf)));
     EXPECT_EQ(-1, write(a2, "foo", 3));
-    EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET);
+    EXPECT_TRUE(errno == ECONNABORTED || errno == ECONNRESET) << "errno:" << errno;
 
     // Check the server sockets too.
     EXPECT_EQ(-1, accept(s1, nullptr, 0));
