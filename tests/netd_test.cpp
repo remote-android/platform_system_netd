@@ -92,24 +92,9 @@ TEST(NetdSELinuxTest, CheckProperBpfLabels) {
     assertBpfContext("/sys/fs/bpf/net_shared", "fs_bpf_net_shared");
     assertBpfContext("/sys/fs/bpf/netd_readonly", "fs_bpf_netd_readonly");
     assertBpfContext("/sys/fs/bpf/netd_shared", "fs_bpf_netd_shared");
+    assertBpfContext("/sys/fs/bpf/tethering", "fs_bpf_tethering");
     assertBpfContext("/sys/fs/bpf/vendor", "fs_bpf_vendor");
     assertBpfContext("/sys/fs/bpf/loader", "fs_bpf_loader");
-}
-
-bool isTetheringInProcess() {
-    int v = access("/apex/com.android.tethering/etc/flag/in-process", F_OK);
-    if (!v) return true;
-    EXPECT_EQ(v, -1) << "expected return of found(0) or notfound(-1/ENOENT)";
-    EXPECT_EQ(errno, ENOENT) << "expected return of found(0) or notfound(-1/ENOENT)";
-    return false;
-}
-
-TEST(NetdSELinuxTest, CheckProperBpfTetheringLabels) {
-    if (isTetheringInProcess()) {
-        assertBpfContext("/sys/fs/bpf/net_shared/tethering", "fs_bpf_net_shared");
-    } else {
-        assertBpfContext("/sys/fs/bpf/tethering", "fs_bpf_tethering");
-    }
 }
 
 // Trivial thread function that simply immediately terminates successfully.
