@@ -48,6 +48,8 @@ extern const uint32_t ALGO_MASK_CRYPT_ALL;
 extern const uint32_t ALGO_MASK_AEAD_ALL;
 // Exposed for testing
 extern const uint8_t REPLAY_WINDOW_SIZE;
+// Exposed for testing
+extern const uint32_t REPLAY_WINDOW_SIZE_ESN;
 
 // Suggest we avoid the smallest and largest ints
 class XfrmMessage;
@@ -316,6 +318,13 @@ public:
         uint8_t key[MAX_KEY_LENGTH];
     };
 
+    // Container for the content of an XFRMA_REPLAY_ESN_VAL netlink attribute.
+    // Exposed for testing
+    struct nlattr_xfrm_replay_esn {
+        nlattr hdr;
+        xfrm_replay_state_esn replay_state;
+    };
+
 #pragma clang diagnostic pop
 
     // Exposed for testing
@@ -413,6 +422,7 @@ public:
     static int fillNlAttrXfrmOutputMark(const XfrmSaInfo& record,
                                         nlattr_xfrm_output_mark* output_mark);
     static int fillNlAttrXfrmIntfId(const __u32 intf_id_value, nlattr_xfrm_interface_id* intf_id);
+    static int fillNlAttrXfrmReplayEsn(nlattr_xfrm_replay_esn* replay_esn);
     static int fillNlAttrXfrmMigrate(const XfrmMigrateInfo& record,
                                      nlattr_xfrm_user_migrate* migrate);
 
