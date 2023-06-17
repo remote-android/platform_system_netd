@@ -329,7 +329,8 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
     size_t expectedMsgLength =
             NLMSG_HDRLEN + NLMSG_ALIGN(sizeof(xfrm_usersa_info)) +
             NLA_ALIGN(offsetof(XfrmController::nlattr_algo_crypt, key) + KEY_LENGTH) +
-            NLA_ALIGN(offsetof(XfrmController::nlattr_algo_auth, key) + KEY_LENGTH);
+            NLA_ALIGN(offsetof(XfrmController::nlattr_algo_auth, key) + KEY_LENGTH) +
+            NLA_ALIGN(sizeof(XfrmController::nlattr_xfrm_replay_esn));
 
     uint32_t testIfId = 0;
     uint32_t testMark = 0;
@@ -392,6 +393,7 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
     // Extract and check the encryption/authentication algorithm
     XfrmController::nlattr_algo_crypt _encryptAlgo{};
     XfrmController::nlattr_algo_auth _authAlgo{};
+    XfrmController::nlattr_xfrm_replay_esn _replayEsn{};
     // Need to use a pointer since you can't pass a structure with a variable
     // sized array in a lambda.
     XfrmController::nlattr_algo_crypt* const encryptAlgo = &_encryptAlgo;
@@ -399,7 +401,8 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
     XfrmController::nlattr_xfrm_mark mark{};
     XfrmController::nlattr_xfrm_output_mark outputmark{};
     XfrmController::nlattr_xfrm_interface_id xfrm_if_id{};
-    auto attrHandler = [&encryptAlgo, &authAlgo, &mark, &outputmark, &xfrm_if_id](
+    XfrmController::nlattr_xfrm_replay_esn* const replay_esn = &_replayEsn;
+    auto attrHandler = [&encryptAlgo, &authAlgo, &mark, &outputmark, &xfrm_if_id, &replay_esn](
                                const nlattr& attr, const Slice& attr_payload) {
         Slice buf = attr_payload;
         if (attr.nla_type == XFRMA_ALG_CRYPT) {
@@ -421,6 +424,9 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
         } else if (attr.nla_type == XFRMA_IF_ID) {
             xfrm_if_id.hdr = attr;
             netdutils::extract(buf, xfrm_if_id.if_id);
+        } else if (attr.nla_type == XFRMA_REPLAY_ESN_VAL) {
+            replay_esn->hdr = attr;
+            netdutils::extract(buf, replay_esn->replay_state);
         } else {
             FAIL() << "Unexpected nlattr type: " << attr.nla_type;
         }
@@ -432,6 +438,8 @@ void testIpSecAddSecurityAssociation(testCaseParams params, const MockSyscalls& 
                         reinterpret_cast<void*>(&encryptAlgo->key), KEY_LENGTH));
     EXPECT_EQ(0, memcmp(reinterpret_cast<void*>(authKey.data()),
                         reinterpret_cast<void*>(&authAlgo->key), KEY_LENGTH));
+    EXPECT_EQ(REPLAY_WINDOW_SIZE_ESN, replay_esn->replay_state.replay_window);
+    EXPECT_EQ((REPLAY_WINDOW_SIZE_ESN + 31) / 32, replay_esn->replay_state.bmp_len);
 
     if (mode == XfrmMode::TUNNEL) {
         if (params.xfrmInterfacesEnabled) {
